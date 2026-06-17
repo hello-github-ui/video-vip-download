@@ -14,6 +14,41 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from video_parser import VideoParser
 
+def get_system_font(size=12):
+    """
+    获取跨平台的系统字体
+    按优先级尝试不同平台的中文字体
+    
+    Args:
+        size (int): 字体大小
+        
+    Returns:
+        QFont: 合适的字体对象
+    """
+    font_families = [
+        'Noto Sans CJK SC',
+        'Noto Sans CJK TC',
+        'Microsoft YaHei',
+        'PingFang SC',
+        'Hiragino Sans GB',
+        'Heiti SC',
+        'SimHei',
+        'WenQuanYi Micro Hei',
+        'Arial Unicode MS',
+        'Arial'
+    ]
+    
+    font = QFont()
+    
+    for family in font_families:
+        if QFont(family).exactMatch():
+            font.setFamily(family)
+            font.setPointSize(size)
+            return font
+    
+    font.setPointSize(size)
+    return font
+
 class DownloadThread(QThread):
     """
     视频下载线程
@@ -72,7 +107,7 @@ class MainWindow(QMainWindow):
         
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText('请输入视频链接，支持腾讯视频、优酷、哔哩哔哩、爱奇艺等...')
-        self.url_input.setFont(QFont('微软雅黑', 12))
+        self.url_input.setFont(get_system_font(12))
         self.url_input.returnPressed.connect(self.on_parse_click)
         
         self.paste_btn = QPushButton('粘贴')
@@ -89,7 +124,7 @@ class MainWindow(QMainWindow):
         api_layout = QHBoxLayout(api_group)
         
         self.api_combo = QComboBox()
-        self.api_combo.setFont(QFont('微软雅黑', 12))
+        self.api_combo.setFont(get_system_font(12))
         
         apis = self.parser.get_all_apis()
         for key, api in apis.items():
@@ -109,16 +144,16 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         
         self.parse_btn = QPushButton('🔍 开始解析')
-        self.parse_btn.setFont(QFont('微软雅黑', 12))
+        self.parse_btn.setFont(get_system_font(12))
         self.parse_btn.clicked.connect(self.on_parse_click)
         
         self.open_btn = QPushButton('🌐 在浏览器打开')
-        self.open_btn.setFont(QFont('微软雅黑', 12))
+        self.open_btn.setFont(get_system_font(12))
         self.open_btn.clicked.connect(self.on_open_browser)
         self.open_btn.setEnabled(False)
         
         self.copy_btn = QPushButton('📋 复制链接')
-        self.copy_btn.setFont(QFont('微软雅黑', 12))
+        self.copy_btn.setFont(get_system_font(12))
         self.copy_btn.clicked.connect(self.copy_to_clipboard)
         self.copy_btn.setEnabled(False)
         
@@ -135,7 +170,7 @@ class MainWindow(QMainWindow):
         
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setFont(QFont('微软雅黑', 11))
+        self.result_text.setFont(get_system_font(11))
         self.result_text.setPlaceholderText('解析结果将显示在这里...')
         
         result_layout.addWidget(self.result_text)
@@ -158,7 +193,7 @@ class MainWindow(QMainWindow):
         
         for i, (name, url) in enumerate(platforms):
             btn = QPushButton(name)
-            btn.setFont(QFont('微软雅黑', 10))
+            btn.setFont(get_system_font(10))
             btn.clicked.connect(lambda checked, u=url: self.open_platform(u))
             quick_layout.addWidget(btn, i // 3, i % 3)
         
@@ -173,10 +208,10 @@ class MainWindow(QMainWindow):
         
         self.quality_combo = QComboBox()
         self.quality_combo.addItems(['best - 最佳画质', '1080p', '720p', '480p', '360p', 'worst - 最低画质'])
-        self.quality_combo.setFont(QFont('微软雅黑', 11))
+        self.quality_combo.setFont(get_system_font(11))
         
         self.download_btn = QPushButton('📥 下载视频')
-        self.download_btn.setFont(QFont('微软雅黑', 12))
+        self.download_btn.setFont(get_system_font(12))
         self.download_btn.clicked.connect(self.on_download_click)
         self.download_btn.setEnabled(False)
         
