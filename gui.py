@@ -231,7 +231,8 @@ class MainWindow(QMainWindow):
         """获取样式表"""
         return """
             QWidget {
-                background-color: #f5f5f5;
+                background-color: #ffffff;
+                color: #1a1a1a;
             }
             QGroupBox {
                 border: 2px solid #1e90ff;
@@ -239,51 +240,81 @@ class MainWindow(QMainWindow):
                 margin-top: 10px;
                 padding-top: 10px;
                 font-weight: bold;
-                color: #333;
+                color: #000000;
+                background-color: #fafafa;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
-                padding: 0 5px 0 5px;
-                background-color: #f5f5f5;
+                padding: 3px 8px;
+                background-color: #ffffff;
+                border-radius: 4px;
+                color: #1e90ff;
             }
             QLineEdit {
-                padding: 8px;
-                border: 2px solid #ddd;
+                padding: 10px;
+                border: 2px solid #cccccc;
                 border-radius: 6px;
-                font-size: 12px;
+                font-size: 13px;
+                background-color: #ffffff;
+                color: #000000;
             }
             QLineEdit:focus {
                 border-color: #1e90ff;
+                outline: none;
+            }
+            QLineEdit::placeholder {
+                color: #999999;
             }
             QPushButton {
-                padding: 8px 16px;
+                padding: 10px 20px;
                 border: none;
                 border-radius: 6px;
                 background-color: #1e90ff;
-                color: white;
+                color: #ffffff;
                 font-weight: bold;
+                font-size: 13px;
             }
             QPushButton:hover {
                 background-color: #4169e1;
             }
             QPushButton:disabled {
-                background-color: #ccc;
+                background-color: #cccccc;
+                color: #999999;
             }
             QComboBox {
-                padding: 6px;
-                border: 2px solid #ddd;
+                padding: 10px;
+                border: 2px solid #cccccc;
                 border-radius: 6px;
-                min-width: 200px;
+                min-width: 250px;
+                background-color: #ffffff;
+                color: #000000;
+                font-size: 13px;
+            }
+            QComboBox::drop-down {
+                border-left: 2px solid #cccccc;
             }
             QTextEdit {
-                border: 2px solid #ddd;
+                border: 2px solid #cccccc;
                 border-radius: 6px;
+                background-color: #ffffff;
+                color: #000000;
+                padding: 10px;
+                font-size: 13px;
+            }
+            QTextEdit::placeholder {
+                color: #999999;
+            }
+            QLabel {
+                color: #000000;
+                font-size: 13px;
             }
             QProgressBar {
                 height: 20px;
                 border-radius: 10px;
                 text-align: center;
+                background-color: #eeeeee;
+                color: #000000;
             }
             QProgressBar::chunk {
                 background-color: #1e90ff;
