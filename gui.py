@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         url_layout = QHBoxLayout(url_group)
         
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText('请输入视频链接，支持腾讯视频、优酷、哔哩哔哩、爱奇艺等...')
+        self.url_input.setPlaceholderText('视频链接，支持腾讯视频、优酷、哔哩哔哩、爱奇艺等...例如：https://v.qq.com/x/cover/wu1e7mrffzvibjy/x0030xogl32.html')
         self.url_input.setFont(get_system_font(12))
         self.url_input.returnPressed.connect(self.on_parse_click)
         

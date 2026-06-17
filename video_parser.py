@@ -18,14 +18,14 @@ class VideoParser:
             'a': {
                 'name': '万能稳定解析',
                 'url': 'https://jx.m3u8.tv/jiexi/?url=',
-                'status': 'deprecated',
-                'note': '实测已不可用'
+                'status': 'active',
+                'note': '推荐使用'
             },
             'b': {
                 'name': '夜幕解析',
                 'url': 'https://www.yemu.xyz/?url=',
-                'status': 'active',
-                'note': '推荐使用'
+                'status': 'deprecated',
+                'note': '实测已不可用'
             },
             'c': {
                 'name': '虾米解析',
