@@ -7,9 +7,9 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QComboBox, QLabel, QTextEdit,
     QGroupBox, QGridLayout, QProgressBar, QMessageBox,
-    QShortcut, QClipboard
+    QShortcut
 )
-from PyQt5.QtGui import QIcon, QFont, QKeySequence
+from PyQt5.QtGui import QIcon, QFont, QKeySequence, QClipboard
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from video_parser import VideoParser
