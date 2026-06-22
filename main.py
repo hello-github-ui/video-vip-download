@@ -3,9 +3,10 @@
 
 import sys
 
+
 def main():
     """
-    henVIP 视频解析工具主入口
+    VIP 视频解析工具主入口
     
     支持两种运行模式:
     1. 图形界面模式: python main.py 或 python main.py -g
@@ -26,6 +27,7 @@ def main():
     else:
         print_help()
 
+
 def run_gui():
     """启动图形界面版本"""
     try:
@@ -35,6 +37,7 @@ def run_gui():
         print(f"❌ 导入图形界面模块失败: {e}")
         print("💡 请确保已安装 PyQt5: pip install PyQt5")
         sys.exit(1)
+
 
 def run_cli(args):
     """启动命令行版本"""
@@ -46,10 +49,11 @@ def run_cli(args):
         print(f"❌ 导入命令行模块失败: {e}")
         sys.exit(1)
 
+
 def print_help():
     """打印帮助信息"""
     help_text = """
-🎥 henVIP 视频解析工具 - 使用说明
+🎥 VIP 视频解析工具 - 使用说明
 
 运行模式:
   python main.py           # 启动图形界面版本
@@ -57,8 +61,8 @@ def print_help():
   python main.py -c [参数]  # 使用命令行模式
 
 命令行模式参数:
-  -a <URL>       使用万能稳定解析
-  -b <URL>       使用夜幕解析(推荐)
+  -a <URL>       使用万能稳定解析(推荐)
+  -b <URL>       使用夜幕解析
   -c <URL>       使用虾米解析
   -d <URL>       使用冰豆解析
   -e <URL>       使用JSON解析
@@ -81,6 +85,7 @@ def print_help():
   腾讯视频、优酷、哔哩哔哩、爱奇艺、芒果TV、搜狐视频等
     """
     print(help_text)
+
 
 if __name__ == '__main__':
     main()

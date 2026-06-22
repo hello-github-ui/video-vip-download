@@ -1,17 +1,18 @@
-import re
-import requests
-import webbrowser
-import subprocess
 import os
+import subprocess
+import webbrowser
 from urllib.parse import quote, urlparse
+
+import requests
 from bs4 import BeautifulSoup
+
 
 class VideoParser:
     """
     视频解析核心类
     支持多种解析线路，提供视频解析和下载功能
     """
-    
+
     def __init__(self):
         """初始化解析器，定义支持的解析线路"""
         self.parse_apis = {
@@ -70,7 +71,7 @@ class VideoParser:
                 'note': ''
             }
         }
-        
+
         self.supported_platforms = {
             '腾讯视频': ['v.qq.com', 'qq.com'],
             '优酷': ['youku.com', 'ykimg.com'],
@@ -141,26 +142,26 @@ class VideoParser:
                 'message': '无效的视频链接',
                 'data': None
             }
-        
+
         if api_key not in self.parse_apis:
             return {
                 'success': False,
                 'message': '无效的解析线路选择',
                 'data': None
             }
-        
+
         api_info = self.parse_apis[api_key]
-        
+
         if api_info['status'] == 'deprecated':
             return {
                 'success': False,
                 'message': f"{api_info['name']}已不可用，请选择其他线路",
                 'data': None
             }
-        
+
         encoded_url = quote(video_url, safe='')
         parsed_url = api_info['url'] + encoded_url
-        
+
         return {
             'success': True,
             'message': f"已使用{api_info['name']}解析",
@@ -207,13 +208,13 @@ class VideoParser:
                 'message': '无效的视频链接',
                 'data': None
             }
-        
+
         if output_path is None:
             output_path = os.getcwd()
-        
+
         if not os.path.exists(output_path):
             os.makedirs(output_path)
-        
+
         quality_map = {
             'best': 'bestvideo+bestaudio/best',
             'worst': 'worstvideo+worstaudio/worst',
@@ -222,9 +223,9 @@ class VideoParser:
             '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
             '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]'
         }
-        
+
         format_spec = quality_map.get(quality, quality_map['best'])
-        
+
         cmd = [
             'yt-dlp',
             '-f', format_spec,
@@ -232,7 +233,7 @@ class VideoParser:
             '--merge-output-format', 'mp4',
             video_url
         ]
-        
+
         try:
             result = subprocess.run(
                 cmd,
@@ -240,7 +241,7 @@ class VideoParser:
                 text=True,
                 cwd=output_path
             )
-            
+
             if result.returncode == 0:
                 return {
                     'success': True,
@@ -299,12 +300,12 @@ class VideoParser:
             }
             response = requests.get(url, headers=headers, timeout=10)
             response.encoding = 'utf-8'
-            
+
             soup = BeautifulSoup(response.text, 'html.parser')
-            
+
             title = soup.title.string if soup.title else '未知标题'
             title = title.strip()
-            
+
             return {
                 'success': True,
                 'message': '提取成功',
