@@ -94,7 +94,7 @@ class VideoParser:
 
     def is_valid_url(self, url):
         """
-        验证URL是否有效
+        验证URL是否有效，严格说是验证url中必须有scheme和（主机和端口）
         
         Args:
             url (str): 待验证的URL
@@ -124,13 +124,13 @@ class VideoParser:
                     return platform
         return '其他'
 
-    def parse_url(self, video_url, api_key='b'):
+    def parse_url(self, video_url, api_key='a'):
         """
         根据选择的解析线路生成解析链接
         
         Args:
             video_url (str): 原始视频链接
-            api_key (str): 解析线路标识，默认为夜幕解析(b)
+            api_key (str): 解析线路标识，默认为万能稳定解析(a)
             
         Returns:
             dict: 解析结果，包含状态和解析后的链接

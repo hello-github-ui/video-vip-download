@@ -1,19 +1,19 @@
-# henVIP 视频解析工具依赖文件
+# henVIP video parser dependencies
 
-# GUI框架 - 跨平台图形界面
+# GUI framework - cross-platform graphical interface
 PyQt5>=5.15.9
 
-# 网络请求库
+# HTTP requests library
 requests>=2.31.0
 
-# 视频处理相关
+# Video download and parsing
 yt-dlp>=2024.7.16
 
-# HTML解析
+# HTML parsing
 beautifulsoup4>=4.12.2
 
-# 命令行参数解析（Python标准库，此处列出仅作说明）
-# argparse - 内置标准库
-# webbrowser - 内置标准库
-# sys - 内置标准库
-# re - 内置标准库
+# Standard library modules (included with Python, no install needed)
+# argparse
+# webbrowser
+# sys
+# re

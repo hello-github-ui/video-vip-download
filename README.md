@@ -1,4 +1,4 @@
-# 🎥 henVIP 视频/电影解析工具  📽️
+# 🎥 视频/电影解析工具 📽️
 
 欢迎使用 VIP 视频解析工具，这是一款支持腾讯视频、优酷、哔哩哔哩、爱奇艺等多平台视频解析的多功能在线播放工具，并支持选择清晰度进行下载功能。无论是图形界面版本还是命令行版本，我们都能为您提供便捷的解析服务。
 
@@ -11,30 +11,28 @@
 - **多平台支持**：支持腾讯视频、优酷、哔哩哔哩、爱奇艺等主流视频网站。
 
 - **多种解析线路**：
-  
+
   | 接口名                   | 地址格式                               |
   | ------------------------ | -------------------------------------- |
   | 万能稳定解析（推荐）     | https://jx.m3u8.tv/jiexi/?url=         |
   | 夜幕解析（实测已不可用） | https://www.yemu.xyz/?url=             |
   | 虾米解析                 | https://jx.xmflv.com/?url=             |
   | 冰豆解析                 | https://bd.jx.cn/?url=                 |
-  | JSON解析                 | https://jx.jsonplayer.com/player/?url= |
-  | m3u8解析                 | https://jx.m3u8.tv/jiexi/?url=         |
+  | JSON 解析                | https://jx.jsonplayer.com/player/?url= |
+  | m3u8 解析                | https://jx.m3u8.tv/jiexi/?url=         |
   | 阳途解析                 | https://jx.yangtu.top/?url=            |
   | 千奇解析                 | https://api.qianqi.net/vip/?url=       |
-  | CK解析                   | https://www.ckplayer.vip/jiexi/?url=   |
+  | CK 解析                  | https://www.ckplayer.vip/jiexi/?url=   |
 
 - **支持下载**
 
 ## 功能演示
 
-**1.0.0版本**
+**1.0.0 版本**
 
 ![image](Image/image-8.png)
 
 ![image](Image/image-9.png)
-
-
 
 ## 📦 EXE 程序使用教程
 
@@ -43,20 +41,20 @@
 1. 前往[Releases](https://github.com/chenhen666/henVIP/releases)，找到你需要的版本（一般用最新版），在版本介绍处可以看到文件介绍，下载对应的文件。
 2. 双击运行 `VIP.exe` 以启动图形界面版本。
 3. 使用命令行打开终端，并运行以下命令来使用命令行版本：
-   
+
    ```bash
    vippj -a <视频链接>
    vippj -b <视频链接>
    vippj -c <视频链接>
    ```
-   
+
    注意：请将 `<视频链接>` 替换为实际的视频 URL。
 
 ## 🎛️ 使用说明
 
 ### 开发环境使用
 
-1. `python3 main.py` 启动后，粘贴视频url地址（例如：“都挺好” `https://v.qq.com/x/cover/wu1e7mrffzvibjy/x0030xogl32.html`）
+1. `python3 main.py` 启动后，粘贴视频 url 地址（例如：“都挺好” `https://v.qq.com/x/cover/wu1e7mrffzvibjy/x0030xogl32.html`）
 2. 点击“解析”即可。
 
 ### 图形界面版
@@ -70,17 +68,19 @@
 命令行版提供了三种解析线路的选择：
 
 - 使用第一个解析路线：
-  
+
   ```bash
   vippj -a <视频链接>
   ```
+
 - 使用第二个解析路线：
-  
+
   ```bash
   vippj -b <视频链接>
   ```
+
 - 使用第三个解析路线：
-  
+
   ```bash
   vippj -c <视频链接>
   ```
@@ -108,4 +108,3 @@
 ---
 
 感谢您使用 VIP 视频解析下载工具！如果您有任何问题或建议，请随时联系我们。✨
-
