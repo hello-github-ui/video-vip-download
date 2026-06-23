@@ -85,7 +85,7 @@ def print_help():
   -n             解析后不自动打开浏览器
 
 使用示例:
-  python main.py -c -b https://v.qq.com/x/cover/mzc00200q0y2d9q.html
+  python main.py -c -b https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html
   python main.py -c -l
   python main.py -c -D https://www.bilibili.com/video/BV1xx411c7mZ -q 720p
   python main.py -c -N https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html

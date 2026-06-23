@@ -4,29 +4,29 @@
 
 ## 功能特性
 
-- **多平台支持**：腾讯视频、优酷、哔哩哔哩、爱奇艺、芒果 TV、搜狐视频等
-- **多种解析线路**：9 条解析线路可选，自动检测可用性
-- **图形界面**：PyQt5 跨平台桌面应用
-- **命令行工具**：支持脚本化和批量操作
-- **批量下载**：自动下载电视剧全部剧集
-- **自动获取下一集**：支持腾讯和爱奇艺的剧集自动翻页
-- **Web 在线访问**：通过浏览器即可使用
-- **下载速度优化**：并发片段下载、缓冲区优化
+-   **多平台支持**：腾讯视频、优酷、哔哩哔哩、爱奇艺、芒果 TV、搜狐视频等
+-   **多种解析线路**：9 条解析线路可选，自动检测可用性
+-   **图形界面**：PyQt5 跨平台桌面应用
+-   **命令行工具**：支持脚本化和批量操作
+-   **批量下载**：自动下载电视剧全部剧集
+-   **自动获取下一集**：支持腾讯和爱奇艺的剧集自动翻页
+-   **Web 在线访问**：通过浏览器即可使用
+-   **下载速度优化**：并发片段下载、缓冲区优化
 
 ## 快速开始
 
 ### 桌面端下载
 
-| 平台 | 架构 | 下载 |
-|------|------|------|
-| Windows | x64 | [VIP-Video-Parser-Windows.exe](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
-| Linux | x64 | [VIP-Video-Parser-Linux](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
-| macOS | Intel | [VIP-Video-Parser-macOS-Intel.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
-| macOS | Apple Silicon | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
+| 平台    | 架构          | 下载                                                                                                             |
+| ------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Windows | x64           | [VIP-Video-Parser-Windows.exe](https://github.com/hello-github-ui/video-vip-download/releases/latest)            |
+| Linux   | x64           | [VIP-Video-Parser-Linux](https://github.com/hello-github-ui/video-vip-download/releases/latest)                  |
+| macOS   | Intel         | [VIP-Video-Parser-macOS-Intel.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest)        |
+| macOS   | Apple Silicon | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
 
 ### Web 端部署
 
-```bash
+````bash
 docker pull <your-dockerhub-username>/vip-video-parser:latest
 docker run -p 8080:8080 <your-dockerhub-username>/vip-video-parser:latest
 
@@ -50,7 +50,7 @@ python main.py -c --help
 
 # 或启动 Web 服务
 python web_server.py
-```
+````
 
 ## 使用说明
 
@@ -65,31 +65,31 @@ python web_server.py
 
 ```bash
 # 解析视频
-python main.py -c -a https://v.qq.com/x/cover/xxx.html
+python main.py -c -a https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html
 
 # 下载视频
-python main.py -c -D https://v.qq.com/x/cover/xxx.html -q 720p -o ~/Downloads
+python main.py -c -D https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html -q 720p -o ~/Downloads
 
 # 批量下载电视剧
-python main.py -c -B https://v.qq.com/x/cover/xxx.html -o ~/Downloads -m 10
+python main.py -c -B https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html -o ~/Downloads -m 10
 
 # 获取下一集
-python main.py -c -N https://v.qq.com/x/cover/xxx.html
+python main.py -c -N https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html
 
 # 获取剧集列表
-python main.py -c -E https://v.qq.com/x/cover/xxx.html
+python main.py -c -E https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html
 ```
 
 ### Web API
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/parse` | POST | 解析视频链接 |
-| `/api/next-episode` | POST | 获取下一集 |
-| `/api/episodes` | POST | 获取剧集列表 |
-| `/api/download` | POST | 下载视频 |
-| `/api/batch-download` | POST | 批量下载 |
-| `/health` | GET | 健康检查 |
+| 接口                  | 方法 | 说明         |
+| --------------------- | ---- | ------------ |
+| `/api/parse`          | POST | 解析视频链接 |
+| `/api/next-episode`   | POST | 获取下一集   |
+| `/api/episodes`       | POST | 获取剧集列表 |
+| `/api/download`       | POST | 下载视频     |
+| `/api/batch-download` | POST | 批量下载     |
+| `/health`             | GET  | 健康检查     |
 
 ## 项目结构
 
@@ -115,19 +115,20 @@ video-vip-download/
 
 本项目使用 GitHub Actions 自动构建多平台产物：
 
-- **触发方式**：推送 `v*` 标签或手动触发
-- **构建产物**：
-  - Windows EXE
-  - Linux 可执行文件
-  - macOS Intel / Apple Silicon App
-  - Docker 镜像（多架构）
-- **发布**：自动创建 GitHub Release 并上传产物
+-   **触发方式**：推送 `v*` 标签或手动触发
+-   **构建产物**：
+    -   Windows EXE
+    -   Linux 可执行文件
+    -   macOS Intel / Apple Silicon App
+    -   Docker 镜像（多架构）
+-   **发布**：自动创建 GitHub Release 并上传产物
 
 ### 配置 Docker Hub 推送
 
 在仓库 Settings > Secrets and variables > Actions 中添加：
-- `DOCKER_USERNAME`：你的 Docker Hub 用户名
-- `DOCKER_PASSWORD`：你的 Docker Hub 密码或 Token
+
+-   `DOCKER_USERNAME`：你的 Docker Hub 用户名
+-   `DOCKER_PASSWORD`：你的 Docker Hub 密码或 Token
 
 ## 许可证
 

@@ -17,29 +17,29 @@
 
 本项目是一款支持多平台 VIP 视频解析的工具，提供以下使用方式：
 
-- **桌面端**：Windows / Linux / macOS（Intel + Apple Silicon）
-- **Web 端**：浏览器在线访问
-- **命令行**：脚本化和批量操作
+-   **桌面端**：Windows / Linux / macOS（Intel + Apple Silicon）
+-   **Web 端**：浏览器在线访问
+-   **命令行**：脚本化和批量操作
 
 **技术栈：**
 
-- Python 3.11
-- PyQt5（桌面 GUI）
-- Flask（Web 服务端）
-- PyInstaller（桌面端打包）
-- Docker（Web 端容器化）
-- GitHub Actions（CI/CD 自动构建）
+-   Python 3.11
+-   PyQt5（桌面 GUI）
+-   Flask（Web 服务端）
+-   PyInstaller（桌面端打包）
+-   Docker（Web 端容器化）
+-   GitHub Actions（CI/CD 自动构建）
 
 ---
 
 ## 环境要求
 
-| 项目 | 要求 |
-|------|------|
-| Python | 3.11+ |
+| 项目     | 要求                    |
+| -------- | ----------------------- |
+| Python   | 3.11+                   |
 | 操作系统 | Windows / macOS / Linux |
-| 网络 | 需要联网解析视频 |
-| 可选 | ffmpeg（用于视频合并） |
+| 网络     | 需要联网解析视频        |
+| 可选     | ffmpeg（用于视频合并）  |
 
 ---
 
@@ -75,6 +75,8 @@ python main.py
 
 # 命令行
 python main.py -c --help
+# 示例
+python main.py -c -D https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html -q 1080p -o ~/Downloads
 
 # Web 服务
 python web_server.py
@@ -147,6 +149,7 @@ python web_server.py
 默认启动在 http://localhost:8080
 
 > **注意**：macOS 上 5000 端口会被 AirPlay Receiver 占用，因此默认使用 8080 端口。可通过环境变量 `PORT` 自定义：
+>
 > ```bash
 > PORT=3000 python web_server.py
 > ```
@@ -181,21 +184,21 @@ docker logs -f vip-parser
 
 ### 构建产物
 
-| 产物 | 说明 |
-|------|------|
-| Windows EXE | `VIP-Video-Parser-Windows.exe` |
-| Linux 可执行文件 | `VIP-Video-Parser-Linux` |
-| macOS Intel App | `VIP-Video-Parser-macOS-Intel.zip` |
-| macOS Apple Silicon App | `VIP-Video-Parser-macOS-AppleSilicon.zip` |
-| Docker 镜像 | `docker.io/<your-dockerhub-username>/vip-video-parser:<version>` |
+| 产物                    | 说明                                                             |
+| ----------------------- | ---------------------------------------------------------------- |
+| Windows EXE             | `VIP-Video-Parser-Windows.exe`                                   |
+| Linux 可执行文件        | `VIP-Video-Parser-Linux`                                         |
+| macOS Intel App         | `VIP-Video-Parser-macOS-Intel.zip`                               |
+| macOS Apple Silicon App | `VIP-Video-Parser-macOS-AppleSilicon.zip`                        |
+| Docker 镜像             | `docker.io/<your-dockerhub-username>/vip-video-parser:<version>` |
 
 ### 配置 Docker Hub 推送
 
 在 GitHub 仓库 Settings > Secrets and variables > Actions 中添加：
 
-| Secret | 说明 |
-|--------|------|
-| `DOCKER_USERNAME` | 你的 Docker Hub 用户名 |
+| Secret            | 说明                                |
+| ----------------- | ----------------------------------- |
+| `DOCKER_USERNAME` | 你的 Docker Hub 用户名              |
 | `DOCKER_PASSWORD` | 你的 Docker Hub 密码或 Access Token |
 
 ### 工作流文件
@@ -229,22 +232,23 @@ docker run -d -p 8080:8080 -v ~/Downloads:/app/downloads --name vip-parser <your
 ### Docker Compose
 
 ```yaml
-version: '3.8'
+version: "3.8"
 
 services:
-  vip-parser:
-    image: <your-dockerhub-username>/vip-video-parser:latest
-    container_name: vip-parser
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./downloads:/app/downloads
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    vip-parser:
+        image: <your-dockerhub-username>/vip-video-parser:latest
+        container_name: vip-parser
+        ports:
+            - "8080:8080"
+        volumes:
+            - ./downloads:/app/downloads
+        restart: unless-stopped
+        healthcheck:
+            test:
+                ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
 ```
 
 ```bash
@@ -259,10 +263,10 @@ docker-compose up -d
 
 **检查清单：**
 
-- [ ] `requirements.txt` 包含所有依赖
-- [ ] `icon.ico` 存在于仓库根目录
-- [ ] Docker Hub 凭据已配置
-- [ ] 标签格式正确（`v1.0.0`）
+-   [ ] `requirements.txt` 包含所有依赖
+-   [ ] `icon.ico` 存在于仓库根目录
+-   [ ] Docker Hub 凭据已配置
+-   [ ] 标签格式正确（`v1.0.0`）
 
 ### Q2: PyInstaller 打包后无法运行
 
@@ -299,6 +303,7 @@ python web_server.py
 macOS 的 AirPlay Receiver 默认占用 5000 端口。本项目已将默认端口改为 **8080**。
 
 如需使用其他端口：
+
 ```bash
 PORT=3000 python web_server.py
 ```

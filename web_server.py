@@ -284,5 +284,6 @@ if __name__ == '__main__':
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     print(f"\n  VIP 视频解析工具 Web 服务端")
     print(f"  访问地址: http://localhost:{port}")
+    print(f"视频地址示例: https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html")
     print(f"  按 Ctrl+C 停止服务\n")
     app.run(host='0.0.0.0', port=port, debug=debug)
