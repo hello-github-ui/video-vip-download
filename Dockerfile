@@ -7,7 +7,8 @@ LABEL description="VIP Video Parser Web Service"
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    libgl1-mesa-glx \
+    libgl1 \
+    libglx-mesa0 \
     libxkbcommon-x11-0 \
     libxcb-icccm4 \
     libxcb-image0 \

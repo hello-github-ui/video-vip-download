@@ -63,7 +63,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-glx libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 libegl1 libopengl0
+          sudo apt-get install -y libgl1 libglx-mesa0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 libegl1 libopengl0
 
       - name: Install Python dependencies
         run: |
@@ -236,7 +236,7 @@ jobs:
             ### Web 端部署
             ```bash
             docker pull ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:${{ steps.version.outputs.VERSION }}
-            docker run -p 5000:5000 ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:${{ steps.version.outputs.VERSION }}
+            docker run -p 8080:8080 ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:${{ steps.version.outputs.VERSION }}
             ```
 
             ### 功能特性
