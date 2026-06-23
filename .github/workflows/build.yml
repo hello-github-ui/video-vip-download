@@ -100,13 +100,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pillow
+
+      - name: Convert icon to icns format
+        run: |
+          python -c "
+          from PIL import Image
+          img = Image.open('icon.ico')
+          img.save('icon.icns', format='ICNS')
+          print('Icon converted to icns format')
+          "
 
       - name: Build macOS Intel App
         run: |
           pyinstaller --clean --noconfirm --windowed \
             --name "VIP-Video-Parser-macOS-Intel" \
-            --icon=icon.ico \
-            --add-data "icon.ico:." \
+            --icon=icon.icns \
+            --add-data "icon.icns:." \
             main.py
           cd dist
           zip -r "VIP-Video-Parser-macOS-Intel.zip" "VIP-Video-Parser-macOS-Intel.app"
@@ -133,13 +143,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pillow
+
+      - name: Convert icon to icns format
+        run: |
+          python -c "
+          from PIL import Image
+          img = Image.open('icon.ico')
+          img.save('icon.icns', format='ICNS')
+          print('Icon converted to icns format')
+          "
 
       - name: Build macOS Apple Silicon App
         run: |
           pyinstaller --clean --noconfirm --windowed \
             --name "VIP-Video-Parser-macOS-AppleSilicon" \
-            --icon=icon.ico \
-            --add-data "icon.ico:." \
+            --icon=icon.icns \
+            --add-data "icon.icns:." \
             main.py
           cd dist
           zip -r "VIP-Video-Parser-macOS-AppleSilicon.zip" "VIP-Video-Parser-macOS-AppleSilicon.app"
@@ -155,6 +175,8 @@ jobs:
   # ========================
   build-web-docker:
     runs-on: ubuntu-latest
+    # Only run when Docker secrets are configured
+    if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -235,8 +257,8 @@ jobs:
 
             ### Web 端部署
             ```bash
-            docker pull ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:${{ steps.version.outputs.VERSION }}
-            docker run -p 8080:8080 ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:${{ steps.version.outputs.VERSION }}
+            docker build -t vip-video-parser .
+            docker run -d -p 8080:8080 --name vip-parser vip-video-parser
             ```
 
             ### 功能特性
