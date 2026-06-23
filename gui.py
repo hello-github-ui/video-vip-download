@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# 设置任务栏中的图标显示
+import ctypes
 import os
 import sys
 
 from PyQt5.QtCore import QThread, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QComboBox, QLabel, QTextEdit,
@@ -14,6 +16,9 @@ from PyQt5.QtWidgets import (
 )
 
 from video_parser import VideoParser
+
+my_app_id = "myVipApp"
+ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
 
 
 def get_system_font(size=12):
@@ -89,6 +94,7 @@ class BatchDownloadThread(QThread):
 
     def run(self):
         """执行批量下载任务"""
+
         def progress_callback(episode_num, total, status, message):
             self.progress.emit(episode_num, total, status, message)
 
@@ -138,6 +144,8 @@ class MainWindow(QMainWindow):
         """初始化用户界面"""
         self.setWindowTitle('VIP 视频解析工具')
         self.setGeometry(100, 100, 750, 650)
+        # 给窗口设置图标，这个是打开的应用程序上的图标
+        self.setWindowIcon(QIcon('icon.ico'))
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
