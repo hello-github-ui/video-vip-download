@@ -108,6 +108,24 @@ class CLI:
             help='下载视频'
         )
 
+        group.add_argument(
+            '-N', '--next',
+            metavar='URL',
+            help='获取下一集并解析（支持腾讯、爱奇艺）'
+        )
+
+        group.add_argument(
+            '-E', '--episodes',
+            metavar='URL',
+            help='获取剧集列表（支持腾讯、爱奇艺）'
+        )
+
+        group.add_argument(
+            '-B', '--batch',
+            metavar='URL',
+            help='批量下载电视剧全部剧集（支持腾讯、爱奇艺）'
+        )
+
         parser.add_argument(
             '-q', '--quality',
             metavar='QUALITY',
@@ -121,6 +139,14 @@ class CLI:
             metavar='PATH',
             default=None,
             help='下载输出目录'
+        )
+
+        parser.add_argument(
+            '-m', '--max',
+            metavar='N',
+            type=int,
+            default=None,
+            help='最大下载集数，默认下载全部'
         )
 
         parser.add_argument(
@@ -199,6 +225,15 @@ class CLI:
             if self.args.download:
                 return self.handle_download()
 
+            if self.args.next:
+                return self.handle_next_episode()
+
+            if self.args.episodes:
+                return self.handle_episode_list()
+
+            if self.args.batch:
+                return self.handle_batch_download()
+
             api_key, video_url = self.get_api_key()
             if api_key is None or video_url is None:
                 print("❌ 无效的参数组合")
@@ -264,11 +299,155 @@ class CLI:
         if output_path:
             print(f"📁 输出目录: {output_path}")
 
-        result = self.parser.download_video(video_url, output_path, quality)
+        result = self.parser.download_video(video_url, output_path, quality, video_url)
 
         if result['success']:
             print(f"\n✅ {result['message']}")
             print(f"📁 保存位置: {result['data']['output_path']}")
+            return 0
+        else:
+            print(f"\n❌ {result['message']}")
+            return 1
+
+    def handle_next_episode(self):
+        """
+        处理获取下一集请求
+        
+        Returns:
+            int: 退出码
+        """
+        current_url = self.args.next
+        platform = self.parser.detect_platform(current_url)
+
+        print(f"\n⏭️ 正在获取下一集: {current_url}")
+        print(f"📺 平台: {platform}")
+
+        result = self.parser.get_next_episode(current_url)
+
+        if result['success']:
+            next_url = result['data']['next_url']
+            episode_num = result['data']['episode_num']
+
+            print(f"\n✅ 找到下一集：第{episode_num}集")
+            print(f"🔗 下一集链接: {next_url}")
+
+            # 自动解析下一集
+            print("\n🔍 正在自动解析下一集...")
+            api_key = 'a'  # 使用默认解析线路
+            parse_result = self.parser.parse_url(next_url, api_key)
+
+            if parse_result['success']:
+                parsed_url = parse_result['data']['parsed_url']
+                print(f"\n✅ 解析成功!")
+                print(f"🔗 解析链接: {parsed_url}")
+
+                if not self.args.no_open:
+                    print("\n🌐 正在打开浏览器...")
+                    if self.parser.open_in_browser(parsed_url):
+                        print("✅ 浏览器已打开")
+                    else:
+                        print("❌ 打开浏览器失败，请手动复制链接")
+
+                return 0
+            else:
+                print(f"\n❌ 解析失败: {parse_result['message']}")
+                return 1
+        else:
+            print(f"\n❌ {result['message']}")
+            return 1
+
+    def handle_episode_list(self):
+        """
+        处理获取剧集列表请求
+
+        Returns:
+            int: 退出码
+        """
+        video_url = self.args.episodes
+        platform = self.parser.detect_platform(video_url)
+
+        print(f"\n📋 正在获取剧集列表: {video_url}")
+        print(f"📺 平台: {platform}")
+
+        result = self.parser.get_episode_list(video_url)
+
+        if result['success']:
+            episodes = result['data']['episodes']
+
+            print(f"\n✅ 共找到 {len(episodes)} 集")
+            print("\n" + "-" * 60)
+            print(f"{'集数':<8} {'链接/ID':<50}")
+            print("-" * 60)
+
+            for ep in episodes[:20]:  # 最多显示20集
+                ep_num = ep.get('episode_num', '?')
+                url = ep.get('url', '') or ep.get('vid', '')
+                print(f"{ep_num:<8} {url:<50}")
+
+            if len(episodes) > 20:
+                print(f"... 还有 {len(episodes) - 20} 集")
+
+            print("-" * 60)
+            return 0
+        else:
+            print(f"\n❌ {result['message']}")
+            return 1
+
+    def handle_batch_download(self):
+        """
+        处理批量下载请求
+
+        Returns:
+            int: 退出码
+        """
+        video_url = self.args.batch
+        quality = self.args.quality
+        output_path = self.args.output
+        max_episodes = self.args.max
+
+        platform = self.parser.detect_platform(video_url)
+
+        print(f"\n📥 开始批量下载电视剧")
+        print(f"🔗 起始链接: {video_url}")
+        print(f"📺 平台: {platform}")
+        print(f"🎬 画质: {quality}")
+        if output_path:
+            print(f"📁 输出目录: {output_path}")
+        if max_episodes:
+            print(f"📊 最大下载集数: {max_episodes}")
+
+        if platform not in ['腾讯视频', '爱奇艺']:
+            print(f"\n❌ 暂不支持{platform}的批量下载")
+            return 1
+
+        def progress_callback(episode_num, total, status, message):
+            if status == 'success':
+                print(f"  ✅ {message}")
+            elif status == 'failed':
+                print(f"  ❌ {message}")
+            else:
+                print(f"  ⏳ {message}")
+
+        result = self.parser.batch_download(
+            video_url,
+            output_path,
+            quality,
+            'a',  # 默认使用万能稳定解析
+            max_episodes,
+            progress_callback
+        )
+
+        if result['success']:
+            data = result['data']
+            print(f"\n✅ 批量下载完成!")
+            print(f"📊 统计: 成功 {len(data['downloaded'])} 集 / 失败 {len(data['failed'])} 集 / 总计 {data['total']} 集")
+            print(f"📁 保存位置: {data['output_path']}")
+
+            if data['failed']:
+                print(f"\n⚠️ 以下集数下载失败:")
+                for item in data['failed']:
+                    print(f"  第{item['episode']}集: {item['reason']}")
+
             return 0
         else:
             print(f"\n❌ {result['message']}")

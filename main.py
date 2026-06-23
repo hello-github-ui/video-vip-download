@@ -16,8 +16,12 @@ def main():
     -a/-b/-c/-d/-e/-f/-g/-h/-i <URL>  : 使用对应解析线路解析视频
     -l                                  : 列出所有解析线路
     -D <URL>                            : 下载视频
+    -N <URL>                            : 获取下一集并解析（支持腾讯、爱奇艺）
+    -E <URL>                            : 获取剧集列表（支持腾讯、爱奇艺）
+    -B <URL>                            : 批量下载电视剧全部剧集（支持腾讯、爱奇艺）
     -q QUALITY                          : 指定下载画质
     -o PATH                             : 指定下载目录
+    -m N                                : 最大下载集数（配合-B使用）
     -n                                  : 解析后不自动打开浏览器
     """
     if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] == '-g'):
@@ -72,14 +76,21 @@ def print_help():
   -i <URL>       使用CK解析
   -l             列出所有可用解析线路
   -D <URL>       下载视频
+  -N <URL>       获取下一集并解析（支持腾讯、爱奇艺）
+  -E <URL>       获取剧集列表（支持腾讯、爱奇艺）
+  -B <URL>       批量下载电视剧全部剧集（支持腾讯、爱奇艺）
   -q QUALITY     指定下载画质 (best/1080p/720p/480p/360p/worst)
   -o PATH        指定下载目录
+  -m N           最大下载集数（配合-B使用）
   -n             解析后不自动打开浏览器
 
 使用示例:
   python main.py -c -b https://v.qq.com/x/cover/mzc00200q0y2d9q.html
   python main.py -c -l
   python main.py -c -D https://www.bilibili.com/video/BV1xx411c7mZ -q 720p
+  python main.py -c -N https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html
+  python main.py -c -E https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html
+  python main.py -c -B https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html -o ~/Downloads -m 5
 
 支持平台:
   腾讯视频、优酷、哔哩哔哩、爱奇艺、芒果TV、搜狐视频等
