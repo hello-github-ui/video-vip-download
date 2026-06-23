@@ -11,6 +11,15 @@ yt-dlp>=2024.7.16
 
 # HTML parsing
 beautifulsoup4>=4.12.2
+lxml>=4.9.3
+
+# Web server dependencies
+flask>=3.0.0
+flask-cors>=4.0.0
+gunicorn>=21.2.0
+
+# Build tools (for CI/CD)
+pyinstaller>=6.0.0
 
 # Standard library modules (included with Python, no install needed)
 # argparse

@@ -32,15 +32,15 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
           pip install -r requirements.txt
 
       - name: Build Windows EXE
+        shell: cmd
         run: |
-          pyinstaller --clean --noconfirm --onefile --windowed `
-            --name "VIP-Video-Parser-Windows" `
-            --icon=icon.ico `
-            --add-data "icon.ico;." `
+          pyinstaller --clean --noconfirm --onefile --windowed ^
+            --name "VIP-Video-Parser-Windows" ^
+            --icon=icon.ico ^
+            --add-data "icon.ico;." ^
             main.py
 
       - name: Upload artifact
@@ -68,10 +68,9 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
           pip install -r requirements.txt
 
-      - name: Build Linux AppImage
+      - name: Build Linux executable
         run: |
           pyinstaller --clean --noconfirm --onefile --windowed \
             --name "VIP-Video-Parser-Linux" \
@@ -100,7 +99,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
           pip install -r requirements.txt
 
       - name: Build macOS Intel App
@@ -134,7 +132,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
           pip install -r requirements.txt
 
       - name: Build macOS Apple Silicon App
