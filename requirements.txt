@@ -1,4 +1,4 @@
-# henVIP video parser dependencies
+# VIP Video Parser dependencies
 
 # GUI framework - cross-platform graphical interface
 PyQt5>=5.15.9

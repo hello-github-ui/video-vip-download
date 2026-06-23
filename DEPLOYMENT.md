@@ -48,8 +48,8 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/chenhen666/henVIP.git
-cd henVIP
+git clone https://github.com/hello-github-ui/video-vip-download.git
+cd video-vip-download
 ```
 
 ### 2. 创建虚拟环境
@@ -186,7 +186,7 @@ docker logs -f vip-parser
 | Linux 可执行文件 | `VIP-Video-Parser-Linux` |
 | macOS Intel App | `VIP-Video-Parser-macOS-Intel.zip` |
 | macOS Apple Silicon App | `VIP-Video-Parser-macOS-AppleSilicon.zip` |
-| Docker 镜像 | `docker.io/<username>/vip-video-parser:<version>` |
+| Docker 镜像 | `docker.io/<your-dockerhub-username>/vip-video-parser:<version>` |
 
 ### 配置 Docker Hub 推送
 
@@ -194,8 +194,8 @@ docker logs -f vip-parser
 
 | Secret | 说明 |
 |--------|------|
-| `DOCKER_USERNAME` | Docker Hub 用户名 |
-| `DOCKER_PASSWORD` | Docker Hub 密码或 Access Token |
+| `DOCKER_USERNAME` | 你的 Docker Hub 用户名 |
+| `DOCKER_PASSWORD` | 你的 Docker Hub 密码或 Access Token |
 
 ### 工作流文件
 
@@ -205,23 +205,24 @@ docker logs -f vip-parser
 
 ## Docker 部署
 
-### 拉取官方镜像
+### 拉取镜像
 
 ```bash
-docker pull chenhen666/vip-video-parser:latest
+# 替换为你的 Docker Hub 用户名
+docker pull <your-dockerhub-username>/vip-video-parser:latest
 ```
 
 ### 运行容器
 
 ```bash
 # 基本运行
-docker run -d -p 5000:5000 --name vip-parser chenhen666/vip-video-parser:latest
+docker run -d -p 5000:5000 --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
 
 # 指定端口
-docker run -d -p 8080:5000 --name vip-parser chenhen666/vip-video-parser:latest
+docker run -d -p 8080:5000 --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
 
 # 持久化下载目录
-docker run -d -p 5000:5000 -v ~/Downloads:/app/downloads --name vip-parser chenhen666/vip-video-parser:latest
+docker run -d -p 5000:5000 -v ~/Downloads:/app/downloads --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
 ```
 
 ### Docker Compose
@@ -231,7 +232,7 @@ version: '3.8'
 
 services:
   vip-parser:
-    image: chenhen666/vip-video-parser:latest
+    image: <your-dockerhub-username>/vip-video-parser:latest
     container_name: vip-parser
     ports:
       - "5000:5000"

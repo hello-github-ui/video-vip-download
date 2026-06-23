@@ -19,16 +19,16 @@
 
 | 平台 | 架构 | 下载 |
 |------|------|------|
-| Windows | x64 | [VIP-Video-Parser-Windows.exe](https://github.com/chenhen666/henVIP/releases/latest) |
-| Linux | x64 | [VIP-Video-Parser-Linux](https://github.com/chenhen666/henVIP/releases/latest) |
-| macOS | Intel | [VIP-Video-Parser-macOS-Intel.zip](https://github.com/chenhen666/henVIP/releases/latest) |
-| macOS | Apple Silicon | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/chenhen666/henVIP/releases/latest) |
+| Windows | x64 | [VIP-Video-Parser-Windows.exe](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
+| Linux | x64 | [VIP-Video-Parser-Linux](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
+| macOS | Intel | [VIP-Video-Parser-macOS-Intel.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
+| macOS | Apple Silicon | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
 
 ### Web 端部署
 
 ```bash
-docker pull chenhen666/vip-video-parser:latest
-docker run -p 5000:5000 chenhen666/vip-video-parser:latest
+docker pull <your-dockerhub-username>/vip-video-parser:latest
+docker run -p 5000:5000 <your-dockerhub-username>/vip-video-parser:latest
 ```
 
 访问 http://localhost:5000 即可使用。
@@ -37,8 +37,8 @@ docker run -p 5000:5000 chenhen666/vip-video-parser:latest
 
 ```bash
 # 克隆仓库
-git clone https://github.com/chenhen666/henVIP.git
-cd henVIP
+git clone https://github.com/hello-github-ui/video-vip-download.git
+cd video-vip-download
 
 # 安装依赖
 pip install -r requirements.txt
@@ -127,8 +127,8 @@ video-vip-download/
 ### 配置 Docker Hub 推送
 
 在仓库 Settings > Secrets and variables > Actions 中添加：
-- `DOCKER_USERNAME`：Docker Hub 用户名
-- `DOCKER_PASSWORD`：Docker Hub 密码或 Token
+- `DOCKER_USERNAME`：你的 Docker Hub 用户名
+- `DOCKER_PASSWORD`：你的 Docker Hub 密码或 Token
 
 ## 许可证
 
