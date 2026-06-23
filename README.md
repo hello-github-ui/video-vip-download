@@ -28,10 +28,9 @@
 
 ```bash
 docker pull <your-dockerhub-username>/vip-video-parser:latest
-docker run -p 5000:5000 <your-dockerhub-username>/vip-video-parser:latest
-```
+docker run -p 8080:8080 <your-dockerhub-username>/vip-video-parser:latest
 
-访问 http://localhost:5000 即可使用。
+访问 http://localhost:8080 即可使用。
 
 ### 源码运行
 

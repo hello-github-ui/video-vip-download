@@ -32,11 +32,11 @@ RUN pip install --no-cache-dir flask flask-cors gunicorn
 COPY . .
 
 # 暴露端口
-EXPOSE 5000
+EXPOSE 8080
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
 # 启动命令
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "web_server:create_app()"]
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "web_server:create_app()"]

@@ -280,6 +280,9 @@ def create_app():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    print(f"\n  VIP 视频解析工具 Web 服务端")
+    print(f"  访问地址: http://localhost:{port}")
+    print(f"  按 Ctrl+C 停止服务\n")
     app.run(host='0.0.0.0', port=port, debug=debug)

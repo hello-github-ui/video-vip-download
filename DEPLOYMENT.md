@@ -65,9 +65,6 @@ venv\Scripts\activate  # Windows
 
 ```bash
 pip install -r requirements.txt
-
-# Web 端额外依赖
-pip install flask flask-cors gunicorn
 ```
 
 ### 4. 运行
@@ -93,10 +90,10 @@ python web_server.py
 
 ```bash
 pip install pyinstaller
-pyinstaller --clean --noconfirm --onefile --windowed \
-  --name "VIP-Video-Parser-Windows" \
-  --icon=icon.ico \
-  --add-data "icon.ico;." \
+pyinstaller --clean --noconfirm --onefile --windowed ^
+  --name "VIP-Video-Parser-Windows" ^
+  --icon=icon.ico ^
+  --add-data "icon.ico;." ^
   main.py
 ```
 
@@ -144,16 +141,20 @@ zip -r "VIP-Video-Parser-macOS-AppleSilicon.zip" "VIP-Video-Parser-macOS-AppleSi
 ### 方式一：直接运行
 
 ```bash
-pip install flask flask-cors gunicorn
 python web_server.py
 ```
 
-访问 http://localhost:5000
+默认启动在 http://localhost:8080
+
+> **注意**：macOS 上 5000 端口会被 AirPlay Receiver 占用，因此默认使用 8080 端口。可通过环境变量 `PORT` 自定义：
+> ```bash
+> PORT=3000 python web_server.py
+> ```
 
 ### 方式二：Gunicorn 生产部署
 
 ```bash
-gunicorn -w 4 -b 0.0.0.0:5000 web_server:create_app()
+gunicorn -w 4 -b 0.0.0.0:8080 web_server:create_app()
 ```
 
 ### 方式三：Docker 部署
@@ -163,7 +164,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 web_server:create_app()
 docker build -t vip-video-parser .
 
 # 运行容器
-docker run -d -p 5000:5000 --name vip-parser vip-video-parser
+docker run -d -p 8080:8080 --name vip-parser vip-video-parser
 
 # 查看日志
 docker logs -f vip-parser
@@ -216,13 +217,13 @@ docker pull <your-dockerhub-username>/vip-video-parser:latest
 
 ```bash
 # 基本运行
-docker run -d -p 5000:5000 --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
+docker run -d -p 8080:8080 --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
 
-# 指定端口
-docker run -d -p 8080:5000 --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
+# 指定宿主机端口
+docker run -d -p 3000:8080 --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
 
 # 持久化下载目录
-docker run -d -p 5000:5000 -v ~/Downloads:/app/downloads --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
+docker run -d -p 8080:8080 -v ~/Downloads:/app/downloads --name vip-parser <your-dockerhub-username>/vip-video-parser:latest
 ```
 
 ### Docker Compose
@@ -235,12 +236,12 @@ services:
     image: <your-dockerhub-username>/vip-video-parser:latest
     container_name: vip-parser
     ports:
-      - "5000:5000"
+      - "8080:8080"
     volumes:
       - ./downloads:/app/downloads
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -284,16 +285,25 @@ pyinstaller --log-level DEBUG ...
 
 ```bash
 # 检查服务是否运行
-curl http://localhost:5000/health
+curl http://localhost:8080/health
 
 # 检查端口占用
-lsof -i :5000
+lsof -i :8080
 
 # 查看日志
 python web_server.py
 ```
 
-### Q4: Docker 镜像构建失败
+### Q4: macOS 提示端口 5000 被占用
+
+macOS 的 AirPlay Receiver 默认占用 5000 端口。本项目已将默认端口改为 **8080**。
+
+如需使用其他端口：
+```bash
+PORT=3000 python web_server.py
+```
+
+### Q5: Docker 镜像构建失败
 
 **解决方案：**
 
@@ -305,7 +315,7 @@ docker build --no-cache -t vip-video-parser .
 # 确保 requirements.txt 包含 flask flask-cors gunicorn
 ```
 
-### Q5: macOS 打开应用提示「无法验证开发者」
+### Q6: macOS 打开应用提示「无法验证开发者」
 
 **解决方案：**
 
