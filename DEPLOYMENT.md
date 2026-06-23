@@ -1,242 +1,321 @@
-# 🎥 视频解析工具 - 部署指南
+# VIP 视频解析工具 - 部署与构建指南
 
 ## 目录
 
 1. [项目概述](#项目概述)
 2. [环境要求](#环境要求)
-3. [依赖安装](#依赖安装)
-4. [运行方式](#运行方式)
-   - [图形界面版本](#图形界面版本)
-   - [命令行版本](#命令行版本)
-5. [功能说明](#功能说明)
-6. [常见问题](#常见问题)
+3. [本地开发](#本地开发)
+4. [桌面端构建](#桌面端构建)
+5. [Web 端部署](#web-端部署)
+6. [GitHub Actions 自动构建](#github-actions-自动构建)
+7. [Docker 部署](#docker-部署)
+8. [常见问题](#常见问题)
 
 ---
 
 ## 项目概述
 
-本项目是一款支持多平台视频解析的工具，提供图形界面和命令行两种操作方式，支持腾讯视频、优酷、哔哩哔哩、爱奇艺等主流视频网站的解析和下载。
+本项目是一款支持多平台 VIP 视频解析的工具，提供以下使用方式：
 
-**项目结构：**
+- **桌面端**：Windows / Linux / macOS（Intel + Apple Silicon）
+- **Web 端**：浏览器在线访问
+- **命令行**：脚本化和批量操作
 
-```
-video-vip-download/
-├── main.py              # 主入口文件
-├── video_parser.py      # 视频解析核心模块
-├── cli.py               # 命令行版本
-├── gui.py               # 图形界面版本
-├── requirements.txt     # 依赖文件
-├── README.md            # 项目说明
-├── DEPLOYMENT.md        # 部署指南（本文件）
-└── Image/               # 演示图片目录
-```
+**技术栈：**
+
+- Python 3.11
+- PyQt5（桌面 GUI）
+- Flask（Web 服务端）
+- PyInstaller（桌面端打包）
+- Docker（Web 端容器化）
+- GitHub Actions（CI/CD 自动构建）
 
 ---
 
 ## 环境要求
 
-| 项目        | 要求                    |
-| ----------- | ----------------------- |
-| 操作系统    | Windows / macOS / Linux |
-| Python 版本 | 3.6+                    |
-| 网络连接    | 需要联网解析视频        |
+| 项目 | 要求 |
+|------|------|
+| Python | 3.11+ |
+| 操作系统 | Windows / macOS / Linux |
+| 网络 | 需要联网解析视频 |
+| 可选 | ffmpeg（用于视频合并） |
 
 ---
 
-## 依赖安装
+## 本地开发
 
-### 方式一：使用 pip 安装
-
-```bash
-# 进入项目目录
-cd video-vip-download
-
-# 安装依赖（推荐使用虚拟环境）
-pip3 install -r requirements.txt
-```
-
-### 方式二：手动安装
+### 1. 克隆仓库
 
 ```bash
-# 安装 GUI 框架
-pip3 install PyQt5>=5.15.9
-
-# 安装网络请求库
-pip3 install requests>=2.31.0
-
-# 安装视频下载工具
-pip3 install yt-dlp>=2024.7.16
-
-# 安装 HTML 解析库
-pip3 install beautifulsoup4>=4.12.2
+git clone https://github.com/chenhen666/henVIP.git
+cd henVIP
 ```
 
-> **注意**：如果使用 yt-dlp 下载视频，需要确保系统已安装 `ffmpeg`（用于视频合并）。
+### 2. 创建虚拟环境
+
+```bash
+python3 -m venv venv
+source venv/bin/activate  # Linux/macOS
+# 或
+venv\Scripts\activate  # Windows
+```
+
+### 3. 安装依赖
+
+```bash
+pip install -r requirements.txt
+
+# Web 端额外依赖
+pip install flask flask-cors gunicorn
+```
+
+### 4. 运行
+
+```bash
+# 图形界面
+python main.py
+
+# 命令行
+python main.py -c --help
+
+# Web 服务
+python web_server.py
+```
 
 ---
 
-## 运行方式
+## 桌面端构建
 
-### 图形界面版本
+### 手动构建（本地）
 
-```bash
-# 方式一：直接运行
-python3 main.py
-
-# 方式二：使用 -g 参数
-python3 main.py -g
-```
-
-**界面功能：**
-
-- 输入视频链接并选择解析线路
-- 一键粘贴剪贴板内容
-- 解析结果展示
-- 快速访问主流视频平台
-- 支持视频下载（可选画质）
-
-### 命令行版本
+#### Windows
 
 ```bash
-# 查看帮助信息
-python3 main.py -c --help
-
-# 列出所有可用解析线路
-python3 main.py -c -l
-
-# 使用夜幕解析（推荐）
-python3 main.py -c -b https://v.qq.com/x/cover/mzc00200q0y2d9q.html
-
-# 使用虾米解析
-python3 main.py -c -c https://www.bilibili.com/video/BV1xx411c7mZ
-
-# 下载视频（最佳画质）
-python3 main.py -c -D https://www.bilibili.com/video/BV1xx411c7mZ
-
-# 指定画质下载
-python3 main.py -c -D https://www.bilibili.com/video/BV1xx411c7mZ -q 720p
-
-# 指定输出目录
-python3 main.py -c -D https://www.bilibili.com/video/BV1xx411c7mZ -o ~/Downloads
-
-# 解析后不自动打开浏览器
-python3 main.py -c -b https://v.qq.com/x/cover/mzc00200q0y2d9q.html -n
+pip install pyinstaller
+pyinstaller --clean --noconfirm --onefile --windowed \
+  --name "VIP-Video-Parser-Windows" \
+  --icon=icon.ico \
+  --add-data "icon.ico;." \
+  main.py
 ```
 
-**命令行参数说明：**
+#### Linux
 
-| 参数                                                         | 说明                                        |
-| ------------------------------------------------------------ | ------------------------------------------- |
-| `-a` / `-b` / `-c` / `-d` / `-e` / `-f` / `-g` / `-H` / `-i` | 选择不同的解析线路                          |
-| `-l`                                                         | 列出所有解析线路                            |
-| `-D <URL>`                                                   | 下载视频                                    |
-| `-q QUALITY`                                                 | 指定画质（best/1080p/720p/480p/360p/worst） |
-| `-o PATH`                                                    | 指定下载目录                                |
-| `-n`                                                         | 解析后不自动打开浏览器                      |
+```bash
+pip install pyinstaller
+pyinstaller --clean --noconfirm --onefile --windowed \
+  --name "VIP-Video-Parser-Linux" \
+  --icon=icon.ico \
+  --add-data "icon.ico:." \
+  main.py
+```
+
+#### macOS Intel
+
+```bash
+pip install pyinstaller
+pyinstaller --clean --noconfirm --windowed \
+  --name "VIP-Video-Parser-macOS-Intel" \
+  --icon=icon.ico \
+  --add-data "icon.ico:." \
+  main.py
+cd dist
+zip -r "VIP-Video-Parser-macOS-Intel.zip" "VIP-Video-Parser-macOS-Intel.app"
+```
+
+#### macOS Apple Silicon
+
+```bash
+pip install pyinstaller
+pyinstaller --clean --noconfirm --windowed \
+  --name "VIP-Video-Parser-macOS-AppleSilicon" \
+  --icon=icon.ico \
+  --add-data "icon.ico:." \
+  main.py
+cd dist
+zip -r "VIP-Video-Parser-macOS-AppleSilicon.zip" "VIP-Video-Parser-macOS-AppleSilicon.app"
+```
 
 ---
 
-## 功能说明
+## Web 端部署
 
-### 解析线路
+### 方式一：直接运行
 
-| 标识 | 名称         | 状态      | 备注         |
-| ---- | ------------ | --------- | ------------ |
-| `a`  | 万能稳定解析 | ❌ 不可用 | 实测已不可用 |
-| `b`  | 夜幕解析     | ✅ 可用   | **推荐使用** |
-| `c`  | 虾米解析     | ✅ 可用   | -            |
-| `d`  | 冰豆解析     | ✅ 可用   | -            |
-| `e`  | JSON 解析    | ✅ 可用   | -            |
-| `f`  | m3u8 解析    | ❌ 不可用 | 实测已不可用 |
-| `g`  | 阳途解析     | ✅ 可用   | -            |
-| `h`  | 千奇解析     | ✅ 可用   | -            |
-| `i`  | CK 解析      | ✅ 可用   | -            |
+```bash
+pip install flask flask-cors gunicorn
+python web_server.py
+```
 
-### 支持平台
+访问 http://localhost:5000
 
-- 腾讯视频 (v.qq.com)
-- 优酷 (youku.com)
-- 哔哩哔哩 (bilibili.com)
-- 爱奇艺 (iqiyi.com)
-- 芒果 TV (mgtv.com)
-- 搜狐视频 (sohu.com)
-- PP 视频 (ppvideo.com)
-- 乐视视频 (le.com)
-- 土豆视频 (tudou.com)
-- AcFun (acfun.cn)
+### 方式二：Gunicorn 生产部署
+
+```bash
+gunicorn -w 4 -b 0.0.0.0:5000 web_server:create_app()
+```
+
+### 方式三：Docker 部署
+
+```bash
+# 构建镜像
+docker build -t vip-video-parser .
+
+# 运行容器
+docker run -d -p 5000:5000 --name vip-parser vip-video-parser
+
+# 查看日志
+docker logs -f vip-parser
+```
+
+---
+
+## GitHub Actions 自动构建
+
+### 触发方式
+
+1. **自动触发**：推送 `v*` 标签（如 `git tag v1.0.0 && git push origin v1.0.0`）
+2. **手动触发**：在 Actions 页面点击 "Run workflow" 并输入版本号
+
+### 构建产物
+
+| 产物 | 说明 |
+|------|------|
+| Windows EXE | `VIP-Video-Parser-Windows.exe` |
+| Linux 可执行文件 | `VIP-Video-Parser-Linux` |
+| macOS Intel App | `VIP-Video-Parser-macOS-Intel.zip` |
+| macOS Apple Silicon App | `VIP-Video-Parser-macOS-AppleSilicon.zip` |
+| Docker 镜像 | `docker.io/<username>/vip-video-parser:<version>` |
+
+### 配置 Docker Hub 推送
+
+在 GitHub 仓库 Settings > Secrets and variables > Actions 中添加：
+
+| Secret | 说明 |
+|--------|------|
+| `DOCKER_USERNAME` | Docker Hub 用户名 |
+| `DOCKER_PASSWORD` | Docker Hub 密码或 Access Token |
+
+### 工作流文件
+
+详见 `.github/workflows/build.yml`
+
+---
+
+## Docker 部署
+
+### 拉取官方镜像
+
+```bash
+docker pull chenhen666/vip-video-parser:latest
+```
+
+### 运行容器
+
+```bash
+# 基本运行
+docker run -d -p 5000:5000 --name vip-parser chenhen666/vip-video-parser:latest
+
+# 指定端口
+docker run -d -p 8080:5000 --name vip-parser chenhen666/vip-video-parser:latest
+
+# 持久化下载目录
+docker run -d -p 5000:5000 -v ~/Downloads:/app/downloads --name vip-parser chenhen666/vip-video-parser:latest
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+
+services:
+  vip-parser:
+    image: chenhen666/vip-video-parser:latest
+    container_name: vip-parser
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./downloads:/app/downloads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+```bash
+docker-compose up -d
+```
 
 ---
 
 ## 常见问题
 
-### Q1: 安装依赖时报错 "Permission denied"
+### Q1: GitHub Actions 构建失败
 
-**解决方案：** 使用 `--user` 参数安装到用户目录
+**检查清单：**
+
+- [ ] `requirements.txt` 包含所有依赖
+- [ ] `icon.ico` 存在于仓库根目录
+- [ ] Docker Hub 凭据已配置
+- [ ] 标签格式正确（`v1.0.0`）
+
+### Q2: PyInstaller 打包后无法运行
+
+**解决方案：**
 
 ```bash
-pip3 install --user -r requirements.txt
+# 检查依赖是否完整
+pip install --upgrade pyinstaller
+
+# 重新打包时添加 --clean
+pyinstaller --clean --noconfirm ...
+
+# 查看打包日志
+pyinstaller --log-level DEBUG ...
 ```
 
-### Q2: 图形界面无法启动
+### Q3: Web 端无法访问
 
-**可能原因：** PyQt5 安装不完整
+**检查：**
+
+```bash
+# 检查服务是否运行
+curl http://localhost:5000/health
+
+# 检查端口占用
+lsof -i :5000
+
+# 查看日志
+python web_server.py
+```
+
+### Q4: Docker 镜像构建失败
 
 **解决方案：**
 
 ```bash
-pip3 uninstall PyQt5 PyQt5-Qt5 PyQt5-sip
-pip3 install PyQt5>=5.15.9
+# 清理缓存
+docker build --no-cache -t vip-video-parser .
+
+# 检查 Dockerfile
+# 确保 requirements.txt 包含 flask flask-cors gunicorn
 ```
 
-### Q3: 下载视频时提示 "未找到 yt-dlp"
-
-**解决方案：** 确保 yt-dlp 已正确安装并添加到 PATH
-
-```bash
-# 检查安装
-pip3 show yt-dlp
-
-# 如果命令行无法找到 yt-dlp
-export PATH="$HOME/Library/Python/3.11/bin:$PATH"  # macOS
-```
-
-### Q4: 解析失败
-
-**可能原因：**
-
-1. 视频链接无效或已过期
-2. 解析接口暂时不可用
-3. 网络连接问题
+### Q5: macOS 打开应用提示「无法验证开发者」
 
 **解决方案：**
 
-- 尝试更换解析线路
-- 检查网络连接
-- 确认视频链接有效
-
-### Q5: 下载的视频没有声音
-
-**解决方案：** 确保系统已安装 `ffmpeg`
-
 ```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu/Debian
-sudo apt-get install ffmpeg
-
-# Windows
-# 下载 ffmpeg 并添加到 PATH
+# 右键点击应用 -> 打开
+# 或执行
+xattr -cr "VIP-Video-Parser-macOS-Intel.app"
 ```
 
 ---
 
 ## 许可证
 
-本项目使用 [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.zh-cn.html) 许可证。
-
----
-
-## 联系方式
-
-如有问题或建议，请通过 GitHub Issues 联系我们。
+GNU General Public License v3.0

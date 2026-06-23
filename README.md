@@ -1,110 +1,135 @@
-# 🎥 VIP 视频/电影解析工具 📽️
+# VIP 视频解析工具
 
-欢迎使用 VIP 视频解析工具，这是一款支持腾讯视频、优酷、哔哩哔哩、爱奇艺等多平台视频解析的多功能在线播放工具，并支持选择清晰度进行下载功能。无论是图形界面版本还是命令行版本，我们都能为您提供便捷的解析服务。
+一款支持多平台 VIP 视频解析的桌面端和 Web 端工具，支持腾讯视频、优酷、哔哩哔哩、爱奇艺等主流视频网站。
 
-## 📋 功能特性
+## 功能特性
 
-- **图形界面版**：简单易用的图形界面，支持快捷键设置与管理。
+- **多平台支持**：腾讯视频、优酷、哔哩哔哩、爱奇艺、芒果 TV、搜狐视频等
+- **多种解析线路**：9 条解析线路可选，自动检测可用性
+- **图形界面**：PyQt5 跨平台桌面应用
+- **命令行工具**：支持脚本化和批量操作
+- **批量下载**：自动下载电视剧全部剧集
+- **自动获取下一集**：支持腾讯和爱奇艺的剧集自动翻页
+- **Web 在线访问**：通过浏览器即可使用
+- **下载速度优化**：并发片段下载、缓冲区优化
 
-- **命令行版**：快速高效的命令行操作，支持多种解析路线。
+## 快速开始
 
-- **多平台支持**：支持腾讯视频、优酷、哔哩哔哩、爱奇艺等主流视频网站。
+### 桌面端下载
 
-- **多种解析线路**：
+| 平台 | 架构 | 下载 |
+|------|------|------|
+| Windows | x64 | [VIP-Video-Parser-Windows.exe](https://github.com/chenhen666/henVIP/releases/latest) |
+| Linux | x64 | [VIP-Video-Parser-Linux](https://github.com/chenhen666/henVIP/releases/latest) |
+| macOS | Intel | [VIP-Video-Parser-macOS-Intel.zip](https://github.com/chenhen666/henVIP/releases/latest) |
+| macOS | Apple Silicon | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/chenhen666/henVIP/releases/latest) |
 
-  | 接口名                   | 地址格式                               |
-  | ------------------------ | -------------------------------------- |
-  | 万能稳定解析（推荐）     | https://jx.m3u8.tv/jiexi/?url=         |
-  | 夜幕解析（实测已不可用） | https://www.yemu.xyz/?url=             |
-  | 虾米解析                 | https://jx.xmflv.com/?url=             |
-  | 冰豆解析                 | https://bd.jx.cn/?url=                 |
-  | JSON 解析                | https://jx.jsonplayer.com/player/?url= |
-  | m3u8 解析                | https://jx.m3u8.tv/jiexi/?url=         |
-  | 阳途解析                 | https://jx.yangtu.top/?url=            |
-  | 千奇解析                 | https://api.qianqi.net/vip/?url=       |
-  | CK 解析                  | https://www.ckplayer.vip/jiexi/?url=   |
+### Web 端部署
 
-- **支持下载**
+```bash
+docker pull chenhen666/vip-video-parser:latest
+docker run -p 5000:5000 chenhen666/vip-video-parser:latest
+```
 
-## 功能演示
+访问 http://localhost:5000 即可使用。
 
-**1.0.0 版本**
+### 源码运行
 
-![image](Image/image-8.png)
+```bash
+# 克隆仓库
+git clone https://github.com/chenhen666/henVIP.git
+cd henVIP
 
-![image](Image/image-9.png)
+# 安装依赖
+pip install -r requirements.txt
 
-## 📦 EXE 程序使用教程
+# 启动图形界面
+python main.py
 
-我们提供了打包好的 EXE 程序，方便用户直接运行，无需配置 Python 环境。
+# 或启动命令行
+python main.py -c --help
 
-1. 前往[Releases](https://github.com/chenhen666/henVIP/releases)，找到你需要的版本（一般用最新版），在版本介绍处可以看到文件介绍，下载对应的文件。
-2. 双击运行 `VIP.exe` 以启动图形界面版本。
-3. 使用命令行打开终端，并运行以下命令来使用命令行版本：
+# 或启动 Web 服务
+python web_server.py
+```
 
-   ```bash
-   vippj -a <视频链接>
-   vippj -b <视频链接>
-   vippj -c <视频链接>
-   ```
+## 使用说明
 
-   注意：请将 `<视频链接>` 替换为实际的视频 URL。
+### 图形界面
 
-## 🎛️ 使用说明
+1. 输入视频链接
+2. 选择解析线路
+3. 点击「开始解析」
+4. 解析成功后可在浏览器打开或下载
 
-### 开发环境使用
+### 命令行
 
-1. `python3 main.py` 启动后，粘贴视频 url 地址（例如：“都挺好” `https://v.qq.com/x/cover/wu1e7mrffzvibjy/x0030xogl32.html`）
-2. 点击“解析”即可。
+```bash
+# 解析视频
+python main.py -c -a https://v.qq.com/x/cover/xxx.html
 
-### 图形界面版
+# 下载视频
+python main.py -c -D https://v.qq.com/x/cover/xxx.html -q 720p -o ~/Downloads
 
-1. 启动程序后，您可以在窗口中输入视频链接，并选择解析线路。
-2. 点击 "启动" 按钮，程序将自动打开解析后的链接。
-3. 您还可以点击底部的按钮快速访问腾讯视频、优酷、哔哩哔哩、爱奇艺。
+# 批量下载电视剧
+python main.py -c -B https://v.qq.com/x/cover/xxx.html -o ~/Downloads -m 10
 
-### 命令行版
+# 获取下一集
+python main.py -c -N https://v.qq.com/x/cover/xxx.html
 
-命令行版提供了三种解析线路的选择：
+# 获取剧集列表
+python main.py -c -E https://v.qq.com/x/cover/xxx.html
+```
 
-- 使用第一个解析路线：
+### Web API
 
-  ```bash
-  vippj -a <视频链接>
-  ```
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/parse` | POST | 解析视频链接 |
+| `/api/next-episode` | POST | 获取下一集 |
+| `/api/episodes` | POST | 获取剧集列表 |
+| `/api/download` | POST | 下载视频 |
+| `/api/batch-download` | POST | 批量下载 |
+| `/health` | GET | 健康检查 |
 
-- 使用第二个解析路线：
+## 项目结构
 
-  ```bash
-  vippj -b <视频链接>
-  ```
+```
+video-vip-download/
+├── .github/workflows/     # GitHub Actions 自动构建
+│   └── build.yml
+├── templates/             # Web 前端模板
+│   └── index.html
+├── main.py               # 主入口
+├── gui.py                # 图形界面
+├── cli.py                # 命令行工具
+├── web_server.py         # Web 服务端
+├── video_parser.py       # 核心解析模块
+├── requirements.txt      # Python 依赖
+├── Dockerfile            # Docker 镜像构建
+├── README.md             # 项目说明
+├── DEPLOYMENT.md         # 部署指南
+└── icon.ico              # 应用图标
+```
 
-- 使用第三个解析路线：
+## 自动构建
 
-  ```bash
-  vippj -c <视频链接>
-  ```
+本项目使用 GitHub Actions 自动构建多平台产物：
 
-## 🌐 系统要求
+- **触发方式**：推送 `v*` 标签或手动触发
+- **构建产物**：
+  - Windows EXE
+  - Linux 可执行文件
+  - macOS Intel / Apple Silicon App
+  - Docker 镜像（多架构）
+- **发布**：自动创建 GitHub Release 并上传产物
 
-- Windows 操作系统（对于 EXE 版本）
-- Python 3.6+（对于源代码版本）
-- 需要安装 `webbrowser`, `argparse`, `re`, 和 `sys` 等标准库（对于源代码版本）
+### 配置 Docker Hub 推送
 
-## 📜 贡献
+在仓库 Settings > Secrets and variables > Actions 中添加：
+- `DOCKER_USERNAME`：Docker Hub 用户名
+- `DOCKER_PASSWORD`：Docker Hub 密码或 Token
 
-如果您希望为本项目做出贡献，请遵循以下步骤：
+## 许可证
 
-1. Fork 本仓库。
-2. 创建一个新的分支。
-3. 提交您的更改。
-4. 将更改推送到您的分支。
-5. 提交一个 Pull Request，等待我们的审核和合并。
-
-## 📜 许可证
-
-本项目使用 [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.zh-cn.html) 许可证。您可以自由地使用和修改这个项目，但请遵循许可证的相关规定。
-
----
-
-感谢您使用 VIP 视频解析下载工具！如果您有任何问题或建议，请随时联系我们。✨
+GNU General Public License v3.0

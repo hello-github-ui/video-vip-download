@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIP 视频解析工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        .input-group input,
+        .input-group select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus,
+        .input-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        .result {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+        .result.show {
+            display: block;
+        }
+        .result.success {
+            border-left: 4px solid #28a745;
+        }
+        .result.error {
+            border-left: 4px solid #dc3545;
+        }
+        .result h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .result p {
+            color: #666;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        .result a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .result a:hover {
+            text-decoration: underline;
+        }
+        .platforms {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .platform-btn {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: white;
+            color: #333;
+            text-decoration: none;
+        }
+        .platform-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .loading.show {
+            display: block;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .api-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .api-item {
+            padding: 10px;
+            border-radius: 6px;
+            background: #f8f9fa;
+            font-size: 14px;
+        }
+        .api-item.active {
+            border-left: 3px solid #28a745;
+        }
+        .api-item.deprecated {
+            border-left: 3px solid #dc3545;
+            opacity: 0.7;
+        }
+        .footer {
+            text-align: center;
+            color: white;
+            opacity: 0.8;
+            margin-top: 30px;
+            font-size: 14px;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            border-bottom-color: #667eea;
+            color: #667eea;
+            font-weight: 600;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .episode-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        .episode-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .episode-item:hover {
+            background: #f8f9fa;
+        }
+        .episode-item a {
+            color: #667eea;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>VIP 视频解析工具</h1>
+            <p>支持腾讯视频、优酷、哔哩哔哩、爱奇艺等多平台视频解析</p>
+        </div>
+
+        <div class="card">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('parse')">视频解析</div>
+                <div class="tab" onclick="switchTab('episodes')">剧集列表</div>
+                <div class="tab" onclick="switchTab('apis')">解析线路</div>
+            </div>
+
+            <!-- 视频解析 -->
+            <div id="tab-parse" class="tab-content active">
+                <div class="input-group">
+                    <label>视频链接</label>
+                    <input type="text" id="videoUrl" placeholder="请输入视频链接，例如：https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html">
+                </div>
+                <div class="input-group">
+                    <label>解析线路</label>
+                    <select id="apiKey">
+                        <option value="a">a. 万能稳定解析 (推荐)</option>
+                        <option value="c">c. 虾米解析</option>
+                        <option value="d">d. 冰豆解析</option>
+                        <option value="e">e. JSON 解析</option>
+                        <option value="g">g. 阳途解析</option>
+                        <option value="h">h. 千奇解析</option>
+                        <option value="i">i. CK 解析</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="parseVideo()">开始解析</button>
+                <button class="btn btn-secondary" onclick="getNextEpisode()">获取下一集</button>
+                <button class="btn btn-secondary" onclick="getEpisodeList()">获取剧集列表</button>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>正在处理中...</p>
+                </div>
+
+                <div class="result" id="result">
+                    <h3>解析结果</h3>
+                    <div id="resultContent"></div>
+                </div>
+            </div>
+
+            <!-- 剧集列表 -->
+            <div id="tab-episodes" class="tab-content">
+                <div class="input-group">
+                    <label>视频链接</label>
+                    <input type="text" id="episodeUrl" placeholder="请输入视频链接">
+                </div>
+                <button class="btn btn-primary" onclick="fetchEpisodeList()">获取剧集列表</button>
+                <div class="loading" id="episodeLoading">
+                    <div class="spinner"></div>
+                    <p>正在获取剧集列表...</p>
+                </div>
+                <div class="episode-list" id="episodeList"></div>
+            </div>
+
+            <!-- 解析线路 -->
+            <div id="tab-apis" class="tab-content">
+                <div class="api-list" id="apiList"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>快速访问</h2>
+            <div class="platforms">
+                <a href="https://v.qq.com" target="_blank" class="platform-btn">腾讯视频</a>
+                <a href="https://www.youku.com" target="_blank" class="platform-btn">优酷</a>
+                <a href="https://www.bilibili.com" target="_blank" class="platform-btn">哔哩哔哩</a>
+                <a href="https://www.iqiyi.com" target="_blank" class="platform-btn">爱奇艺</a>
+                <a href="https://www.mgtv.com" target="_blank" class="platform-btn">芒果TV</a>
+                <a href="https://tv.sohu.com" target="_blank" class="platform-btn">搜狐视频</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>VIP 视频解析工具 | 支持多平台视频解析和下载</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tabName).classList.add('active');
+
+            if (tabName === 'apis') {
+                loadApiList();
+            }
+        }
+
+        function showLoading(id) {
+            document.getElementById(id).classList.add('show');
+        }
+
+        function hideLoading(id) {
+            document.getElementById(id).classList.remove('show');
+        }
+
+        function showResult(success, content) {
+            const result = document.getElementById('result');
+            result.className = 'result show ' + (success ? 'success' : 'error');
+            document.getElementById('resultContent').innerHTML = content;
+        }
+
+        async function parseVideo() {
+            const url = document.getElementById('videoUrl').value.trim();
+            const apiKey = document.getElementById('apiKey').value;
+
+            if (!url) {
+                alert('请输入视频链接');
+                return;
+            }
+
+            showLoading('loading');
+            document.getElementById('result').classList.remove('show');
+
+            try {
+                const response = await fetch(API_BASE + '/api/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, api_key: apiKey })
+                });
+                const data = await response.json();
+
+                hideLoading('loading');
+
+                if (data.success) {
+                    const content = `
+                        <p><strong>平台:</strong> ${data.data.platform || '未知'}</p>
+                        <p><strong>解析线路:</strong> ${data.data.api_name}</p>
+                        <p><strong>原始链接:</strong> <a href="${data.data.original_url}" target="_blank">${data.data.original_url}</a></p>
+                        <p><strong>解析链接:</strong> <a href="${data.data.parsed_url}" target="_blank">${data.data.parsed_url}</a></p>
+                        <button class="btn btn-primary" onclick="window.open('${data.data.parsed_url}', '_blank')">在浏览器打开</button>
+                    `;
+                    showResult(true, content);
+                } else {
+                    showResult(false, `<p>${data.message}</p>`);
+                }
+            } catch (error) {
+                hideLoading('loading');
+                showResult(false, `<p>请求失败: ${error.message}</p>`);
+            }
+        }
+
+        async function getNextEpisode() {
+            const url = document.getElementById('videoUrl').value.trim();
+
+            if (!url) {
+                alert('请输入视频链接');
+                return;
+            }
+
+            showLoading('loading');
+            document.getElementById('result').classList.remove('show');
+
+            try {
+                const response = await fetch(API_BASE + '/api/next-episode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await response.json();
+
+                hideLoading('loading');
+
+                if (data.success) {
+                    const content = `
+                        <p><strong>当前集数:</strong> 第${data.data.current_episode}集</p>
+                        <p><strong>下一集:</strong> 第${data.data.episode_num}集</p>
+                        <p><strong>下一集链接:</strong> <a href="${data.data.next_url}" target="_blank">${data.data.next_url}</a></p>
+                        <button class="btn btn-primary" onclick="document.getElementById('videoUrl').value='${data.data.next_url}';parseVideo();">自动解析下一集</button>
+                    `;
+                    showResult(true, content);
+                } else {
+                    showResult(false, `<p>${data.message}</p>`);
+                }
+            } catch (error) {
+                hideLoading('loading');
+                showResult(false, `<p>请求失败: ${error.message}</p>`);
+            }
+        }
+
+        async function getEpisodeList() {
+            const url = document.getElementById('videoUrl').value.trim();
+
+            if (!url) {
+                alert('请输入视频链接');
+                return;
+            }
+
+            showLoading('loading');
+            document.getElementById('result').classList.remove('show');
+
+            try {
+                const response = await fetch(API_BASE + '/api/episodes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await response.json();
+
+                hideLoading('loading');
+
+                if (data.success) {
+                    const episodes = data.data.episodes;
+                    let listHtml = `<p><strong>共找到 ${episodes.length} 集</strong></p>`;
+                    listHtml += '<div class="episode-list">';
+                    episodes.slice(0, 20).forEach(ep => {
+                        listHtml += `
+                            <div class="episode-item">
+                                <span>第 ${ep.episode_num} 集</span>
+                                <a href="${ep.url}" target="_blank">查看</a>
+                            </div>
+                        `;
+                    });
+                    if (episodes.length > 20) {
+                        listHtml += `<p style="text-align:center;color:#999;margin-top:10px;">... 还有 ${episodes.length - 20} 集</p>`;
+                    }
+                    listHtml += '</div>';
+                    showResult(true, listHtml);
+                } else {
+                    showResult(false, `<p>${data.message}</p>`);
+                }
+            } catch (error) {
+                hideLoading('loading');
+                showResult(false, `<p>请求失败: ${error.message}</p>`);
+            }
+        }
+
+        async function fetchEpisodeList() {
+            const url = document.getElementById('episodeUrl').value.trim();
+
+            if (!url) {
+                alert('请输入视频链接');
+                return;
+            }
+
+            showLoading('episodeLoading');
+            document.getElementById('episodeList').innerHTML = '';
+
+            try {
+                const response = await fetch(API_BASE + '/api/episodes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await response.json();
+
+                hideLoading('episodeLoading');
+
+                if (data.success) {
+                    const episodes = data.data.episodes;
+                    let html = '';
+                    episodes.forEach(ep => {
+                        html += `
+                            <div class="episode-item">
+                                <span>第 ${ep.episode_num} 集 ${ep.title ? '- ' + ep.title : ''}</span>
+                                <a href="${ep.url}" target="_blank">查看</a>
+                            </div>
+                        `;
+                    });
+                    document.getElementById('episodeList').innerHTML = html;
+                } else {
+                    document.getElementById('episodeList').innerHTML = `<p style="color:#dc3545">${data.message}</p>`;
+                }
+            } catch (error) {
+                hideLoading('episodeLoading');
+                document.getElementById('episodeList').innerHTML = `<p style="color:#dc3545">请求失败: ${error.message}</p>`;
+            }
+        }
+
+        async function loadApiList() {
+            try {
+                const response = await fetch(API_BASE + '/api/apis');
+                const data = await response.json();
+
+                if (data.success) {
+                    let html = '';
+                    for (const [key, api] of Object.entries(data.data)) {
+                        const status = api.status === 'active' ? 'active' : 'deprecated';
+                        html += `
+                            <div class="api-item ${status}">
+                                <strong>${key}. ${api.name}</strong>
+                                <br><small>${api.url}</small>
+                                ${api.note ? '<br><small>备注: ' + api.note + '</small>' : ''}
+                            </div>
+                        `;
+                    }
+                    document.getElementById('apiList').innerHTML = html;
+                }
+            } catch (error) {
+                document.getElementById('apiList').innerHTML = `<p style="color:#dc3545">加载失败: ${error.message}</p>`;
+            }
+        }
+
+        // 回车键触发解析
+        document.getElementById('videoUrl').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                parseVideo();
+            }
+        });
+    </script>
+</body>
+</html>

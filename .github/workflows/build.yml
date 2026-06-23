@@ -1,0 +1,257 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.2.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  # ========================
+  # Build Desktop Apps
+  # ========================
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build Windows EXE
+        run: |
+          pyinstaller --clean --noconfirm --onefile --windowed `
+            --name "VIP-Video-Parser-Windows" `
+            --icon=icon.ico `
+            --add-data "icon.ico;." `
+            main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/VIP-Video-Parser-Windows.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-glx libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 libegl1 libopengl0
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build Linux AppImage
+        run: |
+          pyinstaller --clean --noconfirm --onefile --windowed \
+            --name "VIP-Video-Parser-Linux" \
+            --icon=icon.ico \
+            --add-data "icon.ico:." \
+            main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-app
+          path: dist/VIP-Video-Parser-Linux
+
+  build-macos-intel:
+    runs-on: macos-13
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build macOS Intel App
+        run: |
+          pyinstaller --clean --noconfirm --windowed \
+            --name "VIP-Video-Parser-macOS-Intel" \
+            --icon=icon.ico \
+            --add-data "icon.ico:." \
+            main.py
+          cd dist
+          zip -r "VIP-Video-Parser-macOS-Intel.zip" "VIP-Video-Parser-macOS-Intel.app"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-intel-app
+          path: dist/VIP-Video-Parser-macOS-Intel.zip
+
+  build-macos-arm:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: arm64
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build macOS Apple Silicon App
+        run: |
+          pyinstaller --clean --noconfirm --windowed \
+            --name "VIP-Video-Parser-macOS-AppleSilicon" \
+            --icon=icon.ico \
+            --add-data "icon.ico:." \
+            main.py
+          cd dist
+          zip -r "VIP-Video-Parser-macOS-AppleSilicon.zip" "VIP-Video-Parser-macOS-AppleSilicon.app"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm-app
+          path: dist/VIP-Video-Parser-macOS-AppleSilicon.zip
+
+  # ========================
+  # Build Web Docker Image
+  # ========================
+  build-web-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:${{ steps.version.outputs.VERSION }}
+            ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ========================
+  # Create GitHub Release
+  # ========================
+  release:
+    needs: [build-windows, build-linux, build-macos-intel, build-macos-arm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: Release ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## VIP 视频解析工具 ${{ steps.version.outputs.VERSION }}
+
+            ### 桌面端下载
+            | 平台 | 架构 | 下载 |
+            |------|------|------|
+            | Windows | x64 | [VIP-Video-Parser-Windows.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/VIP-Video-Parser-Windows.exe) |
+            | Linux | x64 | [VIP-Video-Parser-Linux](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/VIP-Video-Parser-Linux) |
+            | macOS | Intel | [VIP-Video-Parser-macOS-Intel.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/VIP-Video-Parser-macOS-Intel.zip) |
+            | macOS | Apple Silicon (M1/M2/M3) | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/VIP-Video-Parser-macOS-AppleSilicon.zip) |
+
+            ### Web 端部署
+            ```bash
+            docker pull ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:${{ steps.version.outputs.VERSION }}
+            docker run -p 5000:5000 ${{ secrets.DOCKER_USERNAME }}/vip-video-parser:${{ steps.version.outputs.VERSION }}
+            ```
+
+            ### 功能特性
+            - 支持腾讯视频、优酷、哔哩哔哩、爱奇艺等多平台解析
+            - 图形界面 + 命令行双模式
+            - 批量下载电视剧全部剧集
+            - 自动获取下一集
+            - 多种解析线路可选
+          files: |
+            artifacts/windows-exe/VIP-Video-Parser-Windows.exe
+            artifacts/linux-app/VIP-Video-Parser-Linux
+            artifacts/macos-intel-app/VIP-Video-Parser-macOS-Intel.zip
+            artifacts/macos-arm-app/VIP-Video-Parser-macOS-AppleSilicon.zip
+          draft: false
+          prerelease: false
