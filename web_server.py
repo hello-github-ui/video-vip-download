@@ -274,10 +274,11 @@ def health():
 
 @app.route('/favicon.ico')
 def favicon():
-    """设置favicon，处理index.html的请求"""
-    icon_dir = os.path.dirname(os.path.abspath(__file__))
-    app.logger.info(f"Serving favicon from {icon_dir}/icon.ico")
-    return send_from_directory(icon_dir, 'icon.ico', mimetype='image/vnd.microsoft.icon')
+    return send_from_directory(
+        os.path.join(app.root_path, 'static'),
+        'favicon.ico',
+        mimetype='image/vnd.microsoft.icon'
+    )
 
 
 def create_app():
