@@ -177,8 +177,6 @@ jobs:
   # ========================
   build-web-docker:
     runs-on: ubuntu-latest
-    # Only run when Docker secrets are configured
-    if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
