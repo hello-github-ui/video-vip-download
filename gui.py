@@ -18,7 +18,11 @@ from PyQt5.QtWidgets import (
 from video_parser import VideoParser
 
 my_app_id = "myVipApp"
-ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
+# Windows 特有：设置任务栏图标
+try:
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
+except AttributeError:
+    pass  # 非 Windows 平台跳过
 
 
 def get_system_font(size=12):
