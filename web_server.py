@@ -5,13 +5,11 @@ VIP 视频解析工具 - Web 服务端
 提供 REST API 和网页界面，支持在线解析和下载
 """
 
-import json
 import os
 import tempfile
 import uuid
-from urllib.parse import unquote
 
-from flask import Flask, render_template, request, jsonify, send_file, Response
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 
 from video_parser import VideoParser
@@ -274,6 +272,14 @@ def health():
     })
 
 
+@app.route('/favicon.ico')
+def favicon():
+    """设置favicon，处理index.html的请求"""
+    icon_dir = os.path.dirname(os.path.abspath(__file__))
+    app.logger.info(f"Serving favicon from {icon_dir}/icon.ico")
+    return send_from_directory(icon_dir, 'icon.ico', mimetype='image/vnd.microsoft.icon')
+
+
 def create_app():
     """创建应用实例（用于 Gunicorn/uWSGI）"""
     return app
@@ -282,8 +288,8 @@ def create_app():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-    print(f"\n  VIP 视频解析工具 Web 服务端")
-    print(f"  访问地址: http://localhost:{port}")
-    print(f"视频地址示例: https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html")
-    print(f"  按 Ctrl+C 停止服务\n")
+    print(f"\n\tVIP 视频解析工具 Web 服务端")
+    print(f"\t访问地址: http://localhost:{port}")
+    print(f"\t视频地址示例: https://v.qq.com/x/cover/wu1e7mrffzvibjy/t00306i1e62.html")
+    print(f"\t按 Ctrl+C 停止服务\n")
     app.run(host='0.0.0.0', port=port, debug=debug)
