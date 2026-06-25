@@ -1,4 +1,4 @@
-# VIP 视频解析工具
+# 🎥VIP 视频解析工具
 
 一款支持多平台 VIP 视频解析的桌面端和 Web 端工具，支持腾讯视频、优酷、哔哩哔哩、爱奇艺等主流视频网站。
 
@@ -17,12 +17,12 @@
 
 ### 桌面端下载
 
-| 平台    | 架构          | 下载                                                                                                             |
-| ------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Windows | x64           | [VIP-Video-Parser-Windows.exe](https://github.com/hello-github-ui/video-vip-download/releases/latest)            |
-| Linux   | x64           | [VIP-Video-Parser-Linux](https://github.com/hello-github-ui/video-vip-download/releases/latest)                  |
-| macOS   | Intel         | [VIP-Video-Parser-macOS-Intel.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest)        |
-| macOS   | Apple Silicon | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
+| 平台      | 架构          | 下载                                                         |
+| --------- | ------------- | ------------------------------------------------------------ |
+| Windows   | x64           | [VIP-Video-Parser-Windows.exe](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
+| Linux     | x64           | [VIP-Video-Parser-Linux](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
+| ~~macOS~~ | ~~Intel~~     | ~~[VIP-Video-Parser-macOS-Intel.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest)~~ |
+| macOS     | Apple Silicon | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/hello-github-ui/video-vip-download/releases/latest) |
 
 ### Web 端部署
 
@@ -34,7 +34,7 @@ docker run -p 8080:8080 <your-dockerhub-username>/vip-video-parser:latest
 
 ### 源码运行
 
-```bash
+​```bash
 # 克隆仓库
 git clone https://github.com/hello-github-ui/video-vip-download.git
 cd video-vip-download
@@ -129,6 +129,116 @@ video-vip-download/
 
 -   `DOCKER_USERNAME`：你的 Docker Hub 用户名
 -   `DOCKER_PASSWORD`：你的 Docker Hub 密码或 Token
+
+### 本地打包
+
+#### 前置准备
+
+```bash
+# 克隆仓库
+git clone https://github.com/hello-github-ui/video-vip-download.git
+cd video-vip-download
+
+# 安装依赖
+pip install -r requirements.txt
+pip install pyinstaller pillow
+```
+
+#### Windows
+
+```bash
+pyinstaller --clean --noconfirm --onefile --windowed ^
+  --name "VIP-Video-Parser-Windows" ^
+  --icon=icon.ico ^
+  --add-data "icon.ico;." ^
+  main.py
+```
+
+| 参数                      | 说明                                         |
+| :------------------------ | :------------------------------------------- |
+| `--clean`                 | 打包前清理临时文件                           |
+| `--noconfirm`             | 不确认，直接覆盖旧文件                       |
+| `--onefile`               | 打包成单个 exe 文件                          |
+| `--windowed`              | 启动时不显示命令行黑框（GUI 程序用）         |
+| `--name "xxx"`            | 生成的 exe 文件名                            |
+| `--icon=icon.ico`         | exe 文件的图标                               |
+| `--add-data "icon.ico;."` | 把 icon.ico 打包进程序（Windows 用分号分隔） |
+| `main.py`                 | 入口脚本                                     |
+
+#### macOS
+
+Apple Silicon (M1/M2/M3)：
+
+```bash
+# 先生成 icns 图标
+python -c "
+from PIL import Image
+img = Image.open('icon.ico')
+img.save('icon.icns', format='ICNS')
+print('Icon converted to icns format')
+"
+
+# 打包
+pyinstaller --clean --noconfirm --windowed \
+  --name "VIP-Video-Parser-macOS-AppleSilicon" \
+  --icon=icon.icns \
+  --add-data "icon.icns:." \
+  main.py
+
+# 打包成 zip（方便分发）
+cd dist
+zip -r "VIP-Video-Parser-macOS-AppleSilicon.zip" "VIP-Video-Parser-macOS-AppleSilicon.app"
+```
+
+~~Intel：~~
+
+```bash
+# 先生成 icns 图标
+python -c "
+from PIL import Image
+img = Image.open('icon.ico')
+img.save('icon.icns', format='ICNS')
+print('Icon converted to icns format')
+"
+
+# 打包
+pyinstaller --clean --noconfirm --windowed \
+  --name "VIP-Video-Parser-macOS-Intel" \
+  --icon=icon.icns \
+  --add-data "icon.icns:." \
+  main.py
+
+# 打包成 zip（方便分发）
+cd dist
+zip -r "VIP-Video-Parser-macOS-Intel.zip" "VIP-Video-Parser-macOS-Intel.app"
+```
+
+#### Linux
+
+```bash
+# 安装系统依赖
+sudo apt-get update
+sudo apt-get install -y libgl1 libglx-mesa0 libxkbcommon-x11-0 \
+  libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+  libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 libegl1 libopengl0
+
+# 打包
+pyinstaller --clean --noconfirm --onefile --windowed \
+  --name "VIP-Video-Parser-Linux" \
+  --icon=icon.ico \
+  --add-data "icon.ico:." \
+  main.py
+```
+
+#### 产物位置
+
+打包完成后，产物位于 `dist/` 目录下：
+
+| 平台    | 产物路径                                    |
+| ------- | ------------------------------------------- |
+| Windows | `dist/VIP-Video-Parser-Windows.exe`         |
+| macOS   | `dist/VIP-Video-Parser-macOS-xxx.app/`      |
+| Linux   | `dist/VIP-Video-Parser-Linux`               |
 
 ## 许可证
 

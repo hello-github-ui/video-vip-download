@@ -6,7 +6,7 @@ import ctypes
 import os
 import sys
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -148,8 +148,9 @@ class MainWindow(QMainWindow):
         """初始化用户界面"""
         self.setWindowTitle('VIP 视频解析工具')
         self.setGeometry(100, 100, 750, 650)
-        # 给窗口设置图标，这个是打开的应用程序上的图标
-        self.setWindowIcon(QIcon('icon.ico'))
+        icon_path = get_icon_path()
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -162,6 +163,7 @@ class MainWindow(QMainWindow):
         self.create_batch_download_section()
         self.create_quick_links()
         self.create_download_section()
+        self.create_status_bar()
 
         self.setStyleSheet(self.get_style_sheet())
 
@@ -352,6 +354,28 @@ class MainWindow(QMainWindow):
         download_layout.addWidget(self.progress_bar)
 
         self.main_layout.addWidget(download_group)
+
+    def create_status_bar(self):
+        """创建状态栏，显示作者信息"""
+        status_bar = QWidget()
+        status_bar.setFixedHeight(25)
+        status_layout = QHBoxLayout(status_bar)
+        status_layout.setContentsMargins(10, 0, 10, 0)
+        
+        self.author_label = QLabel('© 作者: QiYue')
+        self.author_label.setFont(get_system_font(10))
+        self.author_label.setStyleSheet('color: #888888;')
+        
+        self.version_label = QLabel('v0.0.7')
+        self.version_label.setFont(get_system_font(10))
+        self.version_label.setStyleSheet('color: #888888;')
+        self.version_label.setAlignment(Qt.AlignRight)
+        
+        status_layout.addWidget(self.author_label)
+        status_layout.addStretch()
+        status_layout.addWidget(self.version_label)
+        
+        self.main_layout.addWidget(status_bar)
 
     def get_style_sheet(self):
         """获取样式表"""
@@ -712,9 +736,21 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, '获取下一集失败', result['message'])
 
 
+def get_icon_path():
+    """获取图标文件路径，支持打包后运行"""
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, 'icon.ico')
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon.ico')
+
+
 def main():
     """图形界面入口函数"""
     app = QApplication(sys.argv)
+    
+    icon_path = get_icon_path()
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+    
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
