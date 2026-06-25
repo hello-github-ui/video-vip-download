@@ -86,49 +86,6 @@ jobs:
                   name: linux-app
                   path: dist/VIP-Video-Parser-Linux
 
-    build-macos-intel:
-        runs-on: macos-13
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-
-            - name: Setup Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.11"
-                  architecture: x64
-
-            - name: Install dependencies
-              run: |
-                  python -m pip install --upgrade pip
-                  pip install -r requirements.txt
-                  pip install pillow
-
-            - name: Convert icon to icns format
-              run: |
-                  python -c "
-                  from PIL import Image
-                  img = Image.open('icon.ico')
-                  img.save('icon.icns', format='ICNS')
-                  print('Icon converted to icns format')
-                  "
-
-            - name: Build macOS Intel App
-              run: |
-                  pyinstaller --clean --noconfirm --windowed \
-                    --name "VIP-Video-Parser-macOS-Intel" \
-                    --icon=icon.icns \
-                    --add-data "icon.icns:." \
-                    main.py
-                  cd dist
-                  zip -r "VIP-Video-Parser-macOS-Intel.zip" "VIP-Video-Parser-macOS-Intel.app"
-
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: macos-intel-app
-                  path: dist/VIP-Video-Parser-macOS-Intel.zip
-
     build-macos-arm:
         runs-on: macos-14
         steps:
@@ -219,7 +176,7 @@ jobs:
     # Create GitHub Release
     # ========================
     release:
-        needs: [build-windows, build-linux, build-macos-intel, build-macos-arm]
+        needs: [build-windows, build-linux, build-macos-arm]
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
@@ -252,7 +209,6 @@ jobs:
                       |------|------|------|
                       | Windows | x64 | [VIP-Video-Parser-Windows.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/VIP-Video-Parser-Windows.exe) |
                       | Linux | x64 | [VIP-Video-Parser-Linux](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/VIP-Video-Parser-Linux) |
-                      | macOS | Intel | [VIP-Video-Parser-macOS-Intel.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/VIP-Video-Parser-macOS-Intel.zip) |
                       | macOS | Apple Silicon (M1/M2/M3) | [VIP-Video-Parser-macOS-AppleSilicon.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/VIP-Video-Parser-macOS-AppleSilicon.zip) |
 
                       ### Web 端部署
@@ -270,7 +226,6 @@ jobs:
                   files: |
                       artifacts/windows-exe/VIP-Video-Parser-Windows.exe
                       artifacts/linux-app/VIP-Video-Parser-Linux
-                      artifacts/macos-intel-app/VIP-Video-Parser-macOS-Intel.zip
                       artifacts/macos-arm-app/VIP-Video-Parser-macOS-AppleSilicon.zip
                   draft: false
                   prerelease: false
