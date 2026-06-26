@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote, urlparse, unquote
 
 import requests
@@ -428,9 +429,9 @@ class VideoParser:
     # ==================== 批量下载功能 ====================
 
     def batch_download(self, start_url, output_path, quality='best', api_key='a', 
-                       max_episodes=None, progress_callback=None):
+                       max_episodes=None, progress_callback=None, max_workers=3):
         """
-        批量下载电视剧所有剧集
+        批量下载电视剧所有剧集（支持多线程并发下载）
         
         Args:
             start_url (str): 起始视频链接
@@ -439,6 +440,7 @@ class VideoParser:
             api_key (str): 解析线路
             max_episodes (int): 最大下载集数，None表示全部
             progress_callback (callable): 进度回调函数，接收(episode_num, total, status, message)
+            max_workers (int): 最大并发下载线程数，默认3
             
         Returns:
             dict: 批量下载结果
@@ -483,42 +485,68 @@ class VideoParser:
         total = len(episodes)
         downloaded = []
         failed = []
+        completed_count = 0
 
-        for i, ep in enumerate(episodes):
-            ep_num = ep.get('episode_num', i + 1)
+        def download_single_episode(ep):
+            """下载单集，返回结果字典"""
+            ep_num = ep.get('episode_num', 0)
             ep_url = ep.get('url', '')
             
             if not ep_url:
-                failed.append({'episode': ep_num, 'reason': '无有效链接'})
-                continue
+                return {'success': False, 'episode': ep_num, 'reason': '无有效链接'}
 
-            if progress_callback:
-                progress_callback(ep_num, total, 'downloading', f'正在下载第{ep_num}集...')
+            try:
+                # 解析视频
+                parse_result = self.parse_url(ep_url, api_key)
+                if not parse_result['success']:
+                    return {'success': False, 'episode': ep_num, 'reason': parse_result['message']}
 
-            # 解析视频
-            parse_result = self.parse_url(ep_url, api_key)
-            if not parse_result['success']:
-                failed.append({'episode': ep_num, 'reason': parse_result['message']})
-                continue
+                parsed_url = parse_result['data']['parsed_url']
 
-            parsed_url = parse_result['data']['parsed_url']
+                # 下载视频
+                download_result = self.download_video(
+                    parsed_url, 
+                    output_path=output_path, 
+                    quality=quality,
+                    original_url=ep_url
+                )
 
-            # 下载视频
-            download_result = self.download_video(
-                parsed_url, 
-                output_path=output_path, 
-                quality=quality,
-                original_url=ep_url
-            )
+                if download_result['success']:
+                    return {'success': True, 'episode': ep_num, 'url': ep_url}
+                else:
+                    return {'success': False, 'episode': ep_num, 'reason': download_result['message']}
+            except Exception as e:
+                return {'success': False, 'episode': ep_num, 'reason': str(e)}
 
-            if download_result['success']:
-                downloaded.append({'episode': ep_num, 'url': ep_url})
-                if progress_callback:
-                    progress_callback(ep_num, total, 'success', f'第{ep_num}集下载成功')
-            else:
-                failed.append({'episode': ep_num, 'reason': download_result['message']})
-                if progress_callback:
-                    progress_callback(ep_num, total, 'failed', f'第{ep_num}集下载失败: {download_result["message"]}')
+        if progress_callback:
+            progress_callback(0, total, 'start', f'开始批量下载，共{total}集，并发数:{max_workers}')
+
+        # 使用线程池并发下载
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(download_single_episode, ep): ep
+                for ep in episodes
+            }
+
+            for future in as_completed(futures):
+                result = future.result()
+                completed_count += 1
+                ep_num = result['episode']
+                
+                if result['success']:
+                    downloaded.append({'episode': ep_num, 'url': futures[future].get('url', '')})
+                    if progress_callback:
+                        progress_callback(
+                            completed_count, total, 'success', 
+                            f'第{ep_num}集下载成功 ({completed_count}/{total})'
+                        )
+                else:
+                    failed.append({'episode': ep_num, 'reason': result['reason']})
+                    if progress_callback:
+                        progress_callback(
+                            completed_count, total, 'failed', 
+                            f'第{ep_num}集下载失败: {result["reason"]} ({completed_count}/{total})'
+                        )
 
         return {
             'success': len(failed) < total,
@@ -528,7 +556,8 @@ class VideoParser:
                 'failed': failed,
                 'total': total,
                 'output_path': output_path,
-                'platform': platform
+                'platform': platform,
+                'max_workers': max_workers
             }
         }
 
@@ -552,7 +581,7 @@ class VideoParser:
             }
 
     def _get_qq_next_episode(self, current_url):
-        """获取腾讯视频下一集"""
+        """获取腾讯视频下一集（使用 Playwright 获取完整剧集列表）"""
         try:
             match = re.search(r'/x/cover/([^/]+)/([^/\.]+)\.html', current_url)
             if not match:
@@ -561,87 +590,65 @@ class VideoParser:
                     'message': '无法解析腾讯视频URL格式',
                     'data': None
                 }
-            
+
             cid = match.group(1)
             current_vid = match.group(2)
-            
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://v.qq.com/'
-            }
-            
-            response = requests.get(current_url, headers=headers, timeout=15)
-            response.encoding = 'utf-8'
-            html = response.text
-            
-            episode_all_match = re.search(r'episode_all[:"\']+(\d+)', html)
-            episode_all = int(episode_all_match.group(1)) if episode_all_match else None
-            
-            episode_pattern = r'vid[:"\']+([a-z0-9]+)["\']+.*?title[:"\']+(\d+)["\']+'
-            episodes = []
-            for m in re.finditer(episode_pattern, html, re.DOTALL):
-                episodes.append({'vid': m.group(1), 'episode_num': int(m.group(2))})
-            
-            if len(episodes) < 2:
-                api_url = f'https://v.qq.com/x/cover/{cid}.html'
-                try:
-                    api_response = requests.get(api_url, headers=headers, timeout=10)
-                    api_html = api_response.text
-                    vid_matches = re.findall(r'vid[:"\']+([a-z0-9]{11,})["\']+', api_html)
-                    unique_vids = []
-                    for vid in vid_matches:
-                        if vid not in unique_vids and vid != cid:
-                            unique_vids.append(vid)
-                    for i, vid in enumerate(unique_vids):
-                        episodes.append({'vid': vid, 'episode_num': i + 1})
-                except:
-                    pass
-            
-            seen_vids = set()
-            unique_episodes = []
-            for ep in episodes:
-                if ep['vid'] not in seen_vids:
-                    seen_vids.add(ep['vid'])
-                    unique_episodes.append(ep)
-            
-            unique_episodes.sort(key=lambda x: x['episode_num'])
-            
+
+            # 获取完整剧集列表
+            list_result = self._get_qq_episode_list(current_url)
+            if not list_result['success']:
+                return {
+                    'success': False,
+                    'message': f'获取剧集列表失败: {list_result["message"]}',
+                    'data': None
+                }
+
+            episodes = list_result['data']['episodes']
+            if not episodes:
+                return {
+                    'success': False,
+                    'message': '未找到任何剧集',
+                    'data': None
+                }
+
+            # 找到当前剧集的位置
             current_index = -1
-            for i, ep in enumerate(unique_episodes):
+            for i, ep in enumerate(episodes):
                 if ep['vid'] == current_vid:
                     current_index = i
                     break
-            
-            if current_index == -1 and unique_episodes:
+
+            # 如果找不到当前vid，默认为第一集
+            if current_index == -1:
                 current_index = 0
-            
-            if current_index >= 0 and current_index + 1 < len(unique_episodes):
-                next_ep = unique_episodes[current_index + 1]
-                next_url = f'https://v.qq.com/x/cover/{cid}/{next_ep["vid"]}.html'
-                
+
+            # 检查是否有下一集
+            if current_index + 1 < len(episodes):
+                next_ep = episodes[current_index + 1]
                 return {
                     'success': True,
                     'message': f'找到下一集：第{next_ep["episode_num"]}集',
                     'data': {
-                        'next_url': next_url,
+                        'next_url': next_ep['url'],
                         'next_vid': next_ep['vid'],
                         'episode_num': next_ep['episode_num'],
-                        'current_episode': unique_episodes[current_index]['episode_num'] if current_index < len(unique_episodes) else 1,
-                        'total_episodes': len(unique_episodes),
+                        'current_episode': episodes[current_index]['episode_num'],
+                        'total_episodes': len(episodes),
                         'platform': '腾讯视频'
                     }
                 }
-            
+
             return {
                 'success': False,
                 'message': '未找到下一集，可能当前已是最后一集',
                 'data': {
                     'current_vid': current_vid,
-                    'episodes_found': len(unique_episodes),
+                    'current_episode': episodes[current_index]['episode_num'] if current_index < len(episodes) else 1,
+                    'total_episodes': len(episodes),
                     'platform': '腾讯视频'
                 }
             }
-            
+
         except Exception as e:
             return {
                 'success': False,
@@ -803,47 +810,163 @@ class VideoParser:
             }
 
     def _get_qq_episode_list(self, video_url):
-        """获取腾讯视频完整剧集列表"""
+        """
+        获取腾讯视频完整剧集列表（使用 Playwright）
+
+        原理：
+        1. 使用 Playwright 加载页面，等待页面完全渲染
+        2. 从页面的剧集列表元素(dt-params属性)中提取所有vid和集数
+        3. 自动切换分页获取所有剧集
+        4. 使用 cid + vid 拼接每一集的完整URL
+        """
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            return {
+                'success': False,
+                'message': '请先安装 playwright: pip install playwright && playwright install chromium',
+                'data': None
+            }
+
         try:
             match = re.search(r'/x/cover/([^/]+)/([^/\.]+)\.html', video_url)
             if not match:
-                return {'success': False, 'message': 'URL格式错误', 'data': None}
-            
+                return {'success': False, 'message': 'URL格式错误，无法解析cid', 'data': None}
+
             cid = match.group(1)
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
-            cover_url = f'https://v.qq.com/x/cover/{cid}.html'
-            response = requests.get(cover_url, headers=headers, timeout=15)
-            html = response.text
-            
-            vid_matches = re.findall(r'vid[:"\']+([a-z0-9]{11,})["\']+', html)
-            unique_vids = []
-            for vid in vid_matches:
-                if vid not in unique_vids and vid != cid:
-                    unique_vids.append(vid)
-            
+            current_vid = match.group(2)
+
+            with sync_playwright() as p:
+                # 尝试使用系统浏览器，提高兼容性
+                browser = None
+                for channel in ['chrome', 'msedge', None]:
+                    try:
+                        if channel:
+                            browser = p.chromium.launch(headless=True, channel=channel)
+                        else:
+                            browser = p.chromium.launch(headless=True)
+                        break
+                    except Exception:
+                        continue
+
+                if not browser:
+                    return {'success': False, 'message': '无法启动浏览器', 'data': None}
+
+                page = browser.new_page(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
+
+                try:
+                    page.goto(video_url, wait_until="domcontentloaded", timeout=30000)
+                except Exception:
+                    pass
+
+                page.wait_for_timeout(5000)
+
+                episodes_dict = {}
+
+                def extract_episodes():
+                    items = page.evaluate("""
+                        () => {
+                            const result = [];
+                            const listContainer = document.querySelector('.episode-list-container, #mvp_pc_web_episode_list, .episode-list');
+                            if (!listContainer) {
+                                return result;
+                            }
+                            const items = listContainer.querySelectorAll('.episode-item, [data-video-idx]');
+                            items.forEach(item => {
+                                const dtParams = item.getAttribute('dt-params');
+                                const videoIdx = item.getAttribute('data-video-idx');
+                                if (dtParams) {
+                                    const match = dtParams.match(/[?&]vid=([^&]+)/);
+                                    if (match && match[1]) {
+                                        let idx = -1;
+                                        if (videoIdx) {
+                                            idx = parseInt(videoIdx);
+                                        }
+                                        result.push({vid: match[1], idx: idx});
+                                    }
+                                }
+                            });
+                            return result;
+                        }
+                    """)
+                    for ep in items:
+                        vid = ep.get('vid')
+                        idx = ep.get('idx', -1)
+                        if vid and vid not in episodes_dict:
+                            episodes_dict[vid] = idx
+
+                # 第一页
+                extract_episodes()
+
+                # 检查并切换分页
+                tabs = page.evaluate("""
+                    () => {
+                        const result = [];
+                        const seen = new Set();
+                        const allButtons = document.querySelectorAll('button, a, span');
+                        allButtons.forEach(btn => {
+                            const text = btn.innerText.trim();
+                            if (text && text.match(/^\\d+-\\d+$/) && !seen.has(text)) {
+                                seen.add(text);
+                                result.push(text);
+                            }
+                        });
+                        return result;
+                    }
+                """)
+
+                for tab_text in tabs:
+                    if tab_text and not tab_text.startswith('1-'):
+                        page.evaluate(f"""
+                            () => {{
+                                const buttons = document.querySelectorAll('button, a, span');
+                                for (const btn of buttons) {{
+                                    if (btn.innerText.trim() === '{tab_text}') {{
+                                        btn.click();
+                                        return true;
+                                    }}
+                                }}
+                                return false;
+                            }}
+                        """)
+                        page.wait_for_timeout(3000)
+                        extract_episodes()
+
+                browser.close()
+
+            if not episodes_dict:
+                return {'success': False, 'message': '未能从页面提取到任何vid', 'data': None}
+
+            # 按索引排序，没有索引的放后面
+            sorted_vids = sorted(
+                episodes_dict.keys(),
+                key=lambda v: (episodes_dict[v] if episodes_dict[v] >= 0 else 9999)
+            )
+
             episodes = []
-            for i, vid in enumerate(unique_vids):
+            for i, vid in enumerate(sorted_vids):
                 episodes.append({
                     'episode_num': i + 1,
                     'vid': vid,
                     'url': f'https://v.qq.com/x/cover/{cid}/{vid}.html'
                 })
-            
+
             return {
                 'success': True,
                 'message': f'共找到 {len(episodes)} 集',
                 'data': {
                     'episodes': episodes,
                     'cid': cid,
+                    'current_vid': current_vid,
+                    'total': len(episodes),
                     'platform': '腾讯视频'
                 }
             }
-            
+
         except Exception as e:
-            return {'success': False, 'message': str(e), 'data': None}
+            return {'success': False, 'message': f'获取剧集列表失败: {str(e)}', 'data': None}
 
     def _get_iqiyi_episode_list(self, video_url):
         """获取爱奇艺完整剧集列表"""
