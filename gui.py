@@ -442,49 +442,67 @@ class MainWindow(QMainWindow):
     def _inject_hls_support_script(self, profile):
         """
         向 WebEngineProfile 注入 HLS 支持脚本
-        在页面加载的最早阶段（DocumentCreation）就注入，
-        欺骗播放器以为浏览器原生支持 HLS，这样播放器才会继续初始化
+        分两个阶段注入：
+        1. DocumentCreation: 重写 canPlayType，欺骗播放器以为支持 HLS
+        2. DocumentReady: 加载 hls.js 并接管所有 m3u8 视频
         """
         from PyQt5.QtWebEngineWidgets import QWebEngineScript
 
-        # HLS 支持脚本：在文档创建时注入
-        hls_script = QWebEngineScript()
-        hls_script.setName('hls_support')
-        hls_script.setInjectionPoint(QWebEngineScript.DocumentCreation)
-        hls_script.setWorldId(QWebEngineScript.MainWorld)
-        hls_script.setRunsOnSubFrames(True)
+        # ========== 脚本1：DocumentCreation 阶段，只做 canPlayType 欺骗 ==========
+        canplay_script = QWebEngineScript()
+        canplay_script.setName('hls_canplay_override')
+        canplay_script.setInjectionPoint(QWebEngineScript.DocumentCreation)
+        canplay_script.setWorldId(QWebEngineScript.MainWorld)
+        canplay_script.setRunsOnSubFrames(True)
 
-        # 脚本内容：
-        # 1. 重写 canPlayType，让播放器以为浏览器支持 HLS
-        # 2. 加载 hls.js
-        # 3. 自动接管所有 m3u8 视频
-        script_code = '''
+        canplay_code = '''
         (function() {
-            if (window.__hlsSupportInjected__) return;
-            window.__hlsSupportInjected__ = true;
+            if (window.__hlsCanPlayInjected__) return;
+            window.__hlsCanPlayInjected__ = true;
 
-            console.log('[HLS] HLS 支持脚本已注入');
+            console.log('[HLS] canPlayType 欺骗已启用');
 
-            // ========== 第1步：欺骗 canPlayType，让播放器以为支持 HLS ==========
+            // 重写 canPlayType，让播放器以为浏览器支持 HLS
             var originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
             HTMLMediaElement.prototype.canPlayType = function(type) {
-                // 如果是 HLS 类型，返回 "probably" 表示支持
-                if (type && (type.indexOf('application/vnd.apple.mpegurl') > -1 ||
-                             type.indexOf('application/x-mpegURL') > -1 ||
-                             type.indexOf('video/mp4') > -1)) {
-                    console.log('[HLS] canPlayType 被调用: ' + type + ' -> probably');
+                if (type && (
+                    type.indexOf('application/vnd.apple.mpegurl') > -1 ||
+                    type.indexOf('application/x-mpegURL') > -1 ||
+                    type.indexOf('application/x-mpegurl') > -1 ||
+                    type.indexOf('video/mp4') > -1
+                )) {
+                    console.log('[HLS] canPlayType: ' + type + ' -> probably');
                     return 'probably';
                 }
                 return originalCanPlayType.apply(this, arguments);
             };
+        })();
+        '''
 
-            // ========== 第2步：加载 hls.js ==========
+        canplay_script.setSourceCode(canplay_code)
+        profile.scripts().insert(canplay_script)
+
+        # ========== 脚本2：DocumentReady 阶段，加载 hls.js 并接管视频 ==========
+        hls_script = QWebEngineScript()
+        hls_script.setName('hls_loader')
+        hls_script.setInjectionPoint(QWebEngineScript.DocumentReady)
+        hls_script.setWorldId(QWebEngineScript.MainWorld)
+        hls_script.setRunsOnSubFrames(True)
+
+        hls_code = '''
+        (function() {
+            if (window.__hlsLoaderInjected__) return;
+            window.__hlsLoaderInjected__ = true;
+
+            console.log('[HLS] 开始加载 hls.js');
+
+            // 动态加载 hls.js
             var script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js';
             script.onload = function() {
                 console.log('[HLS] hls.js 加载成功，版本: ' + Hls.version);
 
-                // 自动接管 m3u8 视频的函数
+                // 自动接管 m3u8 视频
                 function patchVideo(video) {
                     if (video.__hlsPatched__) return;
                     var src = video.src || (video.querySelector('source') && video.querySelector('source').src);
@@ -499,24 +517,21 @@ class MainWindow(QMainWindow):
                                 console.log('[HLS] 视频加载完成，可以播放了');
                             });
                             hls.on(Hls.Events.ERROR, function(event, data) {
-                                console.error('[HLS] 播放错误:', data.details);
+                                console.error('[HLS] 播放错误:', data.details, data.type);
                             });
+                        } else {
+                            console.warn('[HLS] 当前环境不支持 hls.js');
                         }
                     }
                 }
 
                 // 检查已有的 video 元素
-                function checkExistingVideos() {
+                function checkVideos() {
                     var videos = document.querySelectorAll('video');
                     videos.forEach(function(v) { patchVideo(v); });
                 }
 
-                // 页面加载完成后检查
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', checkExistingVideos);
-                } else {
-                    checkExistingVideos();
-                }
+                checkVideos();
 
                 // 监听后续动态添加的 video 元素
                 var observer = new MutationObserver(function(mutations) {
@@ -535,13 +550,11 @@ class MainWindow(QMainWindow):
             script.onerror = function() {
                 console.error('[HLS] hls.js 加载失败');
             };
-            document.documentElement.appendChild(script);
+            document.head.appendChild(script);
         })();
         '''
 
-        hls_script.setSourceCode(script_code)
-
-        # 将脚本添加到 profile
+        hls_script.setSourceCode(hls_code)
         profile.scripts().insert(hls_script)
 
     def on_js_console_message(self, level, message, lineNumber, sourceID):
