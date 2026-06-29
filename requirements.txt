@@ -3,6 +3,9 @@
 # GUI framework - cross-platform graphical interface
 PyQt5>=5.15.9
 
+# Embedded web browser for video playback
+PyQtWebEngine>=5.15.0
+
 # HTTP requests library
 requests>=2.31.0
 
