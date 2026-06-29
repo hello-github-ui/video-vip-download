@@ -6,7 +6,7 @@ import ctypes
 import os
 import sys
 
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -587,11 +587,32 @@ class MainWindow(QMainWindow):
             self.batch_download_btn.setEnabled(False)
             self.episode_list_btn.setEnabled(False)
 
+    def show_auto_close_info(self, title, message, timeout=2000):
+        """
+        显示自动关闭的信息提示框
+        :param title: 提示框标题
+        :param message: 提示内容
+        :param timeout: 自动关闭时间（毫秒），默认2000毫秒（2秒）
+        """
+        # 创建消息框实例，保存为成员变量防止被垃圾回收
+        self._auto_close_msg_box = QMessageBox(self)
+        self._auto_close_msg_box.setWindowTitle(title)
+        self._auto_close_msg_box.setText(message)
+        # 设置为信息图标
+        self._auto_close_msg_box.setIcon(QMessageBox.Information)
+        # 添加确定按钮，用户也可以手动关闭
+        self._auto_close_msg_box.setStandardButtons(QMessageBox.Ok)
+        # 显示消息框（非阻塞方式）
+        self._auto_close_msg_box.show()
+        # 使用定时器在指定时间后自动关闭消息框
+        QTimer.singleShot(timeout, self._auto_close_msg_box.accept)
+
     def on_open_browser(self):
         """在浏览器中打开解析链接"""
         if hasattr(self, 'parsed_url'):
             if self.parser.open_in_browser(self.parsed_url):
-                QMessageBox.information(self, '提示', '浏览器已打开！')
+                # 使用自动关闭的提示框，2秒后自动关闭
+                self.show_auto_close_info('提示', '浏览器已打开！')
             else:
                 QMessageBox.warning(self, '警告', '打开浏览器失败，请手动复制链接！')
 
