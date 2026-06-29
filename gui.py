@@ -4,6 +4,7 @@
 # 设置任务栏中的图标显示
 import ctypes
 import os
+import signal
 import sys
 
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
@@ -865,12 +866,17 @@ def get_icon_path():
 
 def main():
     """图形界面入口函数"""
+    # 让 Ctrl+C 能够正常终止程序
+    # PyQt5 的事件循环会阻塞 Python 的信号处理，
+    # 因此需要设置默认的信号处理方式让系统直接处理 SIGINT
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
     app = QApplication(sys.argv)
-    
+
     icon_path = get_icon_path()
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
-    
+
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
