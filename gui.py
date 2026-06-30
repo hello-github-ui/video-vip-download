@@ -7,7 +7,7 @@ import os
 import signal
 import sys
 
-from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer, QUrl
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -15,15 +15,6 @@ from PyQt5.QtWidgets import (
     QGroupBox, QGridLayout, QProgressBar, QMessageBox,
     QFileDialog, QSpinBox, QTabWidget, QSplitter, QCheckBox
 )
-# 尝试导入 QWebEngineView，如果不可用则降级处理
-try:
-    from PyQt5.QtWebEngineWidgets import QWebEngineView
-    from PyQt5.QtWebEngineWidgets import QWebEngineSettings
-    from PyQt5.QtWebEngineWidgets import QWebEnginePage
-    WEBENGINE_AVAILABLE = True
-except ImportError:
-    WEBENGINE_AVAILABLE = False
-    QWebEnginePage = object
 
 from video_parser import VideoParser
 
@@ -159,36 +150,6 @@ class NextEpisodeThread(QThread):
         self.finished.emit(result)
 
 
-class LogWebPage(QWebEnginePage):
-    """
-    自定义网页页面类，用于捕获 JavaScript 控制台输出
-    继承自 QWebEnginePage，重写控制台消息处理方法
-    """
-
-    def __init__(self, parent=None, log_callback=None):
-        """
-        初始化页面
-        :param parent: 父对象
-        :param log_callback: 日志回调函数，接收 (level, message, lineNumber, sourceID)
-        """
-        super().__init__(parent)
-        self._log_callback = log_callback
-
-    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
-        """
-        重写控制台消息处理方法
-        :param level: 消息级别（0=调试, 1=信息, 2=警告, 3=错误）
-        :param message: 消息内容
-        :param lineNumber: 行号
-        :param sourceID: 源文件标识
-        """
-        # 如果有回调函数，调用它
-        if self._log_callback:
-            self._log_callback(level, message, lineNumber, sourceID)
-        # 调用父类方法
-        super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
-
-
 class MainWindow(QMainWindow):
     """
     主窗口类
@@ -202,8 +163,6 @@ class MainWindow(QMainWindow):
         self.batch_thread = None
         self.next_thread = None
         self.episode_list_thread = None
-        # WebEngineView 播放器（如果可用）
-        self.web_view = None
 
         self.init_ui()
 
@@ -234,13 +193,23 @@ class MainWindow(QMainWindow):
         """创建URL输入区域"""
         url_group = QGroupBox('视频链接')
         url_layout = QHBoxLayout(url_group)
+        url_layout.setSpacing(10)
+
+        platforms = ['自动检测', '腾讯视频', '优酷', '哔哩哔哩', '爱奇艺', '芒果TV', '搜狐视频', 'PP视频', '乐视视频', '土豆视频', 'AcFun']
+        
+        self.platform_combo = QComboBox()
+        self.platform_combo.setFont(get_system_font(12))
+        for p in platforms:
+            self.platform_combo.addItem(p)
+        self.platform_combo.setCurrentIndex(0)
+        self.platform_combo.setMinimumWidth(120)
 
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText(
-            '视频链接，支持腾讯视频、优酷、哔哩哔哩、爱奇艺等...例如：https://v.qq.com/x/cover/wu1e7mrffzvibjy/x0030xogl32.html')
+        self.url_input.setPlaceholderText('请输入视频链接...')
         self.url_input.setFont(get_system_font(12))
         self.url_input.returnPressed.connect(self.on_parse_click)
 
+        url_layout.addWidget(self.platform_combo)
         url_layout.addWidget(self.url_input)
 
         self.main_layout.addWidget(url_group)
@@ -296,45 +265,32 @@ class MainWindow(QMainWindow):
         self.next_btn.setEnabled(False)
         self.next_btn.setToolTip('自动获取并解析下一集（支持腾讯、爱奇艺）')
 
-        self.play_btn = QPushButton('在此处播放')
-        self.play_btn.setFont(get_system_font(12))
-        self.play_btn.clicked.connect(self.on_play_click)
-        self.play_btn.setEnabled(False)
-        self.play_btn.setToolTip('在应用内部播放解析后的视频')
+        # self.play_btn = QPushButton('在浏览器播放')
+        # self.play_btn.setFont(get_system_font(12))
+        # self.play_btn.clicked.connect(self.on_play_click)
+        # self.play_btn.setEnabled(False)
+        # self.play_btn.setToolTip('在浏览器中播放解析后的视频')
 
         btn_layout.addWidget(self.parse_btn)
         btn_layout.addWidget(self.episode_list_btn)
         btn_layout.addWidget(self.open_btn)
         btn_layout.addWidget(self.copy_btn)
         btn_layout.addWidget(self.next_btn)
-        btn_layout.addWidget(self.play_btn)
+        # btn_layout.addWidget(self.play_btn)
 
         self.main_layout.addLayout(btn_layout)
 
     def create_tab_widget(self):
-        """创建选项卡区域：解析结果 + 视频播放"""
+        """创建选项卡区域"""
         self.tab_widget = QTabWidget()
         self.tab_widget.setFont(get_system_font(11))
 
-        # 日志启用状态（默认不启用，出于磁盘考虑）
-        self.log_enabled = False
-
-        # ===== Tab 1: 解析结果 =====
+        # ===== 解析结果 =====
         result_tab = QWidget()
         result_layout = QVBoxLayout(result_tab)
         result_layout.setContentsMargins(5, 5, 5, 5)
 
-        # --- 日志开关（放在解析结果文本框上方）---
-        log_switch_layout = QHBoxLayout()
-        self.log_enabled_checkbox = QCheckBox('启用播放日志')
-        self.log_enabled_checkbox.setFont(get_system_font(10))
-        self.log_enabled_checkbox.setChecked(False)
-        self.log_enabled_checkbox.stateChanged.connect(self.on_log_enabled_changed)
-        log_switch_layout.addWidget(self.log_enabled_checkbox)
-        log_switch_layout.addStretch()
-        result_layout.addLayout(log_switch_layout)
-
-        # --- 解析结果文本（日志也显示在这里）---
+        # --- 解析结果文本 ---
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
         self.result_text.setFont(get_system_font(11))
@@ -343,232 +299,7 @@ class MainWindow(QMainWindow):
 
         self.tab_widget.addTab(result_tab, '解析结果')
 
-        # ===== Tab 2: 视频播放 =====
-        play_tab = QWidget()
-        play_layout = QVBoxLayout(play_tab)
-        play_layout.setContentsMargins(5, 5, 5, 5)
-
-        # --- 播放区域 ---
-        if WEBENGINE_AVAILABLE:
-            from PyQt5.QtWebEngineWidgets import QWebEngineProfile
-            from PyQt5.QtWebEngineWidgets import QWebEngineScript
-
-            self.web_view = QWebEngineView()
-
-            # 获取默认配置文件
-            profile = QWebEngineProfile.defaultProfile()
-
-            # 设置 User-Agent 模拟 Chrome 浏览器，避免网站检测拦截
-            profile.setHttpUserAgent(
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/120.0.0.0 Safari/537.36'
-            )
-
-            # 在页面加载的最早阶段注入 HLS 支持脚本
-            # 这样播放器检测时就会以为浏览器支持 HLS
-            self._inject_hls_support_script(profile)
-
-            # 启用 JavaScript（视频播放器必须）
-            self.web_view.settings().setAttribute(QWebEngineSettings.JavascriptEnabled, True)
-            # 启用插件（Flash等，虽然现在很少用了）
-            self.web_view.settings().setAttribute(QWebEngineSettings.PluginsEnabled, True)
-            # 启用自动加载图片
-            self.web_view.settings().setAttribute(QWebEngineSettings.AutoLoadImages, True)
-            # 允许本地内容访问远程内容
-            self.web_view.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-            # 允许远程内容访问本地文件
-            self.web_view.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
-            # 启用 WebGL（部分播放器需要）
-            self.web_view.settings().setAttribute(QWebEngineSettings.WebGLEnabled, True)
-            # 启用 2D 画布加速
-            self.web_view.settings().setAttribute(QWebEngineSettings.Accelerated2dCanvasEnabled, True)
-            # 启用视频内联播放
-            try:
-                self.web_view.settings().setAttribute(QWebEngineSettings.VideoCanPlayInline, True)
-            except AttributeError:
-                pass  # 旧版本 Qt 可能没有这个属性
-
-            # 连接页面加载信号
-            self.web_view.loadStarted.connect(self.on_web_load_started)
-            self.web_view.loadProgress.connect(self.on_web_load_progress)
-            self.web_view.loadFinished.connect(self.on_web_load_finished)
-
-            # 使用自定义页面，捕获 JavaScript 控制台输出
-            log_page = LogWebPage(
-                self.web_view,
-                log_callback=self.on_js_console_message
-            )
-            self.web_view.setPage(log_page)
-
-            play_layout.addWidget(self.web_view)
-        else:
-            # WebEngine 不可用时的提示
-            web_hint = QLabel('当前环境不支持内置播放，请安装 PyQtWebEngine：\npip install PyQtWebEngine')
-            web_hint.setAlignment(Qt.AlignCenter)
-            web_hint.setStyleSheet('color: #888888; padding: 40px;')
-            play_layout.addWidget(web_hint)
-
-        self.tab_widget.addTab(play_tab, '视频播放')
-
         self.main_layout.addWidget(self.tab_widget, stretch=1)
-
-    def on_log_enabled_changed(self, state):
-        """日志开关状态改变时的处理"""
-        self.log_enabled = (state == Qt.Checked)
-        if self.log_enabled:
-            self.result_text.append('\n[日志已启用]')
-
-    def append_play_log(self, message):
-        """向解析结果文本框中追加一条日志消息（仅当日志启用时）"""
-        if self.log_enabled and hasattr(self, 'result_text'):
-            self.result_text.append(message)
-
-    def on_web_load_started(self):
-        """页面开始加载"""
-        self.append_play_log('[加载中...]')
-
-    def on_web_load_progress(self, progress):
-        """页面加载进度"""
-        self.append_play_log(f'[进度] {progress}%')
-
-    def on_web_load_finished(self, success):
-        """页面加载完成"""
-        if success:
-            self.append_play_log('[完成] 页面加载成功')
-        else:
-            self.append_play_log('[错误] 页面加载失败')
-
-    def _inject_hls_support_script(self, profile):
-        """
-        向 WebEngineProfile 注入 HLS 支持脚本
-        分两个阶段注入：
-        1. DocumentCreation: 重写 canPlayType，欺骗播放器以为支持 HLS
-        2. DocumentReady: 加载 hls.js 并接管所有 m3u8 视频
-        """
-        from PyQt5.QtWebEngineWidgets import QWebEngineScript
-
-        # ========== 脚本1：DocumentCreation 阶段，只做 canPlayType 欺骗 ==========
-        canplay_script = QWebEngineScript()
-        canplay_script.setName('hls_canplay_override')
-        canplay_script.setInjectionPoint(QWebEngineScript.DocumentCreation)
-        canplay_script.setWorldId(QWebEngineScript.MainWorld)
-        canplay_script.setRunsOnSubFrames(True)
-
-        canplay_code = '''
-        (function() {
-            if (window.__hlsCanPlayInjected__) return;
-            window.__hlsCanPlayInjected__ = true;
-
-            console.log('[HLS] canPlayType 欺骗已启用');
-
-            // 重写 canPlayType，让播放器以为浏览器支持 HLS
-            var originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
-            HTMLMediaElement.prototype.canPlayType = function(type) {
-                if (type && (
-                    type.indexOf('application/vnd.apple.mpegurl') > -1 ||
-                    type.indexOf('application/x-mpegURL') > -1 ||
-                    type.indexOf('application/x-mpegurl') > -1 ||
-                    type.indexOf('video/mp4') > -1
-                )) {
-                    console.log('[HLS] canPlayType: ' + type + ' -> probably');
-                    return 'probably';
-                }
-                return originalCanPlayType.apply(this, arguments);
-            };
-        })();
-        '''
-
-        canplay_script.setSourceCode(canplay_code)
-        profile.scripts().insert(canplay_script)
-
-        # ========== 脚本2：DocumentReady 阶段，加载 hls.js 并接管视频 ==========
-        hls_script = QWebEngineScript()
-        hls_script.setName('hls_loader')
-        hls_script.setInjectionPoint(QWebEngineScript.DocumentReady)
-        hls_script.setWorldId(QWebEngineScript.MainWorld)
-        hls_script.setRunsOnSubFrames(True)
-
-        hls_code = '''
-        (function() {
-            if (window.__hlsLoaderInjected__) return;
-            window.__hlsLoaderInjected__ = true;
-
-            console.log('[HLS] 开始加载 hls.js');
-
-            // 动态加载 hls.js
-            var script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js';
-            script.onload = function() {
-                console.log('[HLS] hls.js 加载成功，版本: ' + Hls.version);
-
-                // 自动接管 m3u8 视频
-                function patchVideo(video) {
-                    if (video.__hlsPatched__) return;
-                    var src = video.src || (video.querySelector('source') && video.querySelector('source').src);
-                    if (src && src.indexOf('.m3u8') > -1) {
-                        console.log('[HLS] 检测到 m3u8 视频: ' + src);
-                        if (Hls.isSupported()) {
-                            video.__hlsPatched__ = true;
-                            var hls = new Hls();
-                            hls.loadSource(src);
-                            hls.attachMedia(video);
-                            hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                                console.log('[HLS] 视频加载完成，可以播放了');
-                            });
-                            hls.on(Hls.Events.ERROR, function(event, data) {
-                                console.error('[HLS] 播放错误:', data.details, data.type);
-                            });
-                        } else {
-                            console.warn('[HLS] 当前环境不支持 hls.js');
-                        }
-                    }
-                }
-
-                // 检查已有的 video 元素
-                function checkVideos() {
-                    var videos = document.querySelectorAll('video');
-                    videos.forEach(function(v) { patchVideo(v); });
-                }
-
-                checkVideos();
-
-                // 监听后续动态添加的 video 元素
-                var observer = new MutationObserver(function(mutations) {
-                    mutations.forEach(function(m) {
-                        m.addedNodes.forEach(function(node) {
-                            if (node.tagName === 'VIDEO') {
-                                patchVideo(node);
-                            } else if (node.querySelectorAll) {
-                                node.querySelectorAll('video').forEach(function(v) { patchVideo(v); });
-                            }
-                        });
-                    });
-                });
-                observer.observe(document.documentElement, { childList: true, subtree: true });
-            };
-            script.onerror = function() {
-                console.error('[HLS] hls.js 加载失败');
-            };
-            document.head.appendChild(script);
-        })();
-        '''
-
-        hls_script.setSourceCode(hls_code)
-        profile.scripts().insert(hls_script)
-
-    def on_js_console_message(self, level, message, lineNumber, sourceID):
-        """
-        JavaScript 控制台消息回调
-        :param level: 消息级别（0=调试, 1=信息, 2=警告, 3=错误）
-        :param message: 消息内容
-        :param lineNumber: 行号
-        :param sourceID: 源文件标识
-        """
-        level_map = {0: 'DEBUG', 1: 'INFO', 2: 'WARN', 3: 'ERROR'}
-        level_name = level_map.get(level, f'LEVEL{level}')
-        self.append_play_log(f'[JS {level_name}] {message} ({sourceID}:{lineNumber})')
-
 
     def create_batch_download_section(self):
         """创建批量下载区域"""
@@ -692,7 +423,7 @@ class MainWindow(QMainWindow):
         self.author_label.setFont(get_system_font(10))
         self.author_label.setStyleSheet('color: #888888;')
         
-        self.version_label = QLabel('v0.0.7')
+        self.version_label = QLabel('v1.0.0')
         self.version_label.setFont(get_system_font(10))
         self.version_label.setStyleSheet('color: #888888;')
         self.version_label.setAlignment(Qt.AlignRight)
@@ -711,98 +442,153 @@ class MainWindow(QMainWindow):
                 color: #1a1a1a;
             }
             QGroupBox {
-                border: 2px solid #1e90ff;
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 10px;
+                border: 2px solid #e0e0e0;
+                border-radius: 10px;
+                margin-top: 12px;
+                padding-top: 12px;
                 font-weight: bold;
-                color: #000000;
+                color: #1a1a1a;
                 background-color: #fafafa;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 3px 8px;
+                left: 12px;
+                padding: 3px 10px;
                 background-color: #ffffff;
-                border-radius: 4px;
+                border-radius: 6px;
                 color: #1e90ff;
+                font-size: 13px;
             }
             QLineEdit {
-                padding: 10px;
-                border: 2px solid #cccccc;
-                border-radius: 6px;
+                padding: 8px 12px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
                 font-size: 13px;
                 background-color: #ffffff;
-                color: #000000;
+                color: #1a1a1a;
+                selection-background-color: #1e90ff;
+                selection-color: #ffffff;
+            }
+            QLineEdit:hover {
+                border-color: #b0b0b0;
             }
             QLineEdit:focus {
                 border-color: #1e90ff;
-                outline: none;
+                background-color: #f8fbff;
             }
             QLineEdit::placeholder {
-                color: #999999;
+                color: #aaaaaa;
             }
             QPushButton {
-                padding: 10px 20px;
+                padding: 9px 20px;
                 border: none;
-                border-radius: 6px;
+                border-radius: 8px;
                 background-color: #1e90ff;
                 color: #ffffff;
                 font-weight: bold;
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #4169e1;
+                background-color: #187bcd;
+            }
+            QPushButton:pressed {
+                background-color: #1565c0;
             }
             QPushButton:disabled {
-                background-color: #cccccc;
+                background-color: #e0e0e0;
                 color: #999999;
             }
             QComboBox {
-                padding: 10px;
-                border: 2px solid #cccccc;
-                border-radius: 6px;
+                padding: 6px 10px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
                 min-width: 150px;
                 background-color: #ffffff;
-                color: #000000;
+                color: #1a1a1a;
                 font-size: 13px;
+                selection-background-color: #1e90ff;
+                selection-color: #ffffff;
             }
-            QComboBox::drop-down {
-                border-left: 2px solid #cccccc;
+            QComboBox:hover {
+                border-color: #b0b0b0;
+            }
+            QComboBox:focus {
+                border-color: #1e90ff;
+                background-color: #f8fbff;
+            }
+            QComboBox QAbstractItemView {
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                background-color: #ffffff;
+                color: #1a1a1a;
+                selection-background-color: #e6f3ff;
+                selection-color: #1e90ff;
+                padding: 6px;
+                outline: 0;
+            }
+            QComboBox QAbstractItemView::item {
+                padding: 8px 12px;
+                border-radius: 4px;
+                margin: 2px 0;
+            }
+            QComboBox QAbstractItemView::item:hover {
+                background-color: #f0f7ff;
+            }
+            QComboBox QAbstractItemView::item:selected {
+                background-color: #e6f3ff;
+                color: #1e90ff;
+                font-weight: bold;
             }
             QTextEdit {
-                border: 2px solid #cccccc;
-                border-radius: 6px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
                 background-color: #ffffff;
-                color: #000000;
-                padding: 10px;
+                color: #1a1a1a;
+                padding: 10px 12px;
                 font-size: 13px;
+                selection-background-color: #1e90ff;
+                selection-color: #ffffff;
+            }
+            QTextEdit:hover {
+                border-color: #b0b0b0;
+            }
+            QTextEdit:focus {
+                border-color: #1e90ff;
             }
             QTextEdit::placeholder {
-                color: #999999;
+                color: #aaaaaa;
             }
             QLabel {
-                color: #000000;
+                color: #1a1a1a;
                 font-size: 13px;
             }
             QProgressBar {
                 height: 20px;
                 border-radius: 10px;
                 text-align: center;
-                background-color: #eeeeee;
-                color: #000000;
+                background-color: #f0f0f0;
+                color: #1a1a1a;
             }
             QProgressBar::chunk {
                 background-color: #1e90ff;
                 border-radius: 10px;
             }
             QSpinBox {
-                padding: 8px;
-                border: 2px solid #cccccc;
-                border-radius: 6px;
+                padding: 6px 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
                 background-color: #ffffff;
-                color: #000000;
+                color: #1a1a1a;
                 font-size: 13px;
+                selection-background-color: #1e90ff;
+                selection-color: #ffffff;
+            }
+            QSpinBox:hover {
+                border-color: #b0b0b0;
+            }
+            QSpinBox:focus {
+                border-color: #1e90ff;
+                background-color: #f8fbff;
             }
         """
 
@@ -817,7 +603,10 @@ class MainWindow(QMainWindow):
         """复制链接到剪贴板"""
         clipboard = QApplication.clipboard()
         clipboard.setText(self.parsed_url)
-        QMessageBox.information(self, '提示', '链接已复制到剪贴板！')
+        # 该种提示框，需要手动关闭
+        # QMessageBox.information(self, '提示', '链接已复制到剪贴板！')
+        # 使用自动关闭的提示框，2秒后自动关闭
+        self.show_auto_close_info('提示', '链接已复制到剪贴板！')
 
     def on_select_directory(self):
         """选择下载保存目录"""
@@ -849,7 +638,16 @@ class MainWindow(QMainWindow):
         if result['success']:
             self.parsed_url = result['data']['parsed_url']
             self.original_url = video_url
-            platform = self.parser.detect_platform(video_url)
+            
+            selected_platform = self.platform_combo.currentText()
+            if selected_platform == '自动检测':
+                platform = self.parser.detect_platform(video_url)
+                # 自动选中检测到的平台
+                platforms = ['自动检测', '腾讯视频', '优酷', '哔哩哔哩', '爱奇艺', '芒果TV', '搜狐视频', 'PP视频', '乐视视频', '土豆视频', 'AcFun']
+                if platform in platforms:
+                    self.platform_combo.setCurrentText(platform)
+            else:
+                platform = selected_platform
 
             self.result_text.append("\n解析成功！")
             self.result_text.append(f"视频平台: {platform}")
@@ -858,14 +656,6 @@ class MainWindow(QMainWindow):
             self.open_btn.setEnabled(True)
             self.copy_btn.setEnabled(True)
             self.download_btn.setEnabled(True)
-            # 启用播放按钮（如果 WebEngine 可用）
-            if WEBENGINE_AVAILABLE:
-                self.play_btn.setEnabled(True)
-                self.result_text.append("内置播放器: 已就绪")
-            else:
-                self.result_text.append("内置播放器: 未安装 (pip install PyQtWebEngine)")
-
-            # 如果是腾讯或爱奇艺，启用下一集和批量下载按钮
             if platform in ['腾讯视频', '爱奇艺']:
                 self.next_btn.setEnabled(True)
                 self.batch_download_btn.setEnabled(True)
@@ -879,7 +669,6 @@ class MainWindow(QMainWindow):
             self.open_btn.setEnabled(False)
             self.copy_btn.setEnabled(False)
             self.download_btn.setEnabled(False)
-            self.play_btn.setEnabled(False)
             self.next_btn.setEnabled(False)
             self.batch_download_btn.setEnabled(False)
             self.episode_list_btn.setEnabled(False)
@@ -914,64 +703,38 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, '警告', '打开浏览器失败，请手动复制链接！')
 
     def on_play_click(self):
-        """在应用内部播放视频：切换到视频播放Tab并加载视频"""
+        """在浏览器中播放视频"""
         if not hasattr(self, 'parsed_url'):
             QMessageBox.warning(self, '警告', '请先解析视频链接！')
             return
-
-        # 检查 WebEngine 是否可用
-        if not WEBENGINE_AVAILABLE or self.web_view is None:
-            QMessageBox.warning(
-                self, '提示',
-                '当前环境不支持内置播放，请安装 PyQtWebEngine:\n'
-                'pip install PyQtWebEngine'
-            )
-            return
-
-        # 切换到视频播放 Tab
-        self.tab_widget.setCurrentIndex(1)
-
-        # 如果启用了日志，打印加载信息
-        if self.log_enabled:
-            self.append_play_log('')
-            self.append_play_log('=' * 60)
-            self.append_play_log(f'开始加载: {self.parsed_url}')
-            self.append_play_log('=' * 60)
-
-        # 加载视频链接
-        self.web_view.load(QUrl(self.parsed_url))
+        # 直接调用浏览器播放
+        self.on_open_browser()
 
     def on_download_click(self):
-        """处理下载按钮点击"""
+        """处理下载按钮点击 - 打开浏览器并注入下载按钮"""
         if not hasattr(self, 'parsed_url'):
             QMessageBox.warning(self, '警告', '请先解析视频链接！')
             return
 
-        # 检查是否选择了保存目录
-        output_path = self.output_path_input.text().strip()
-        if not output_path:
-            output_path = QFileDialog.getExistingDirectory(
-                self,
-                '选择下载保存目录',
-                os.path.expanduser('~/Downloads'),
-                QFileDialog.ShowDirsOnly
-            )
-            if not output_path:
-                QMessageBox.warning(self, '警告', '请选择下载保存目录！')
-                return
-            self.output_path_input.setText(output_path)
-
-        video_url = self.parsed_url
+        parsed_url = self.parsed_url
         original_url = getattr(self, 'original_url', None)
-        quality = self.quality_combo.currentText().split(' ')[0]
 
-        self.download_btn.setEnabled(False)
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
+        print(f"正在打开浏览器并注入下载按钮...")
 
-        self.download_thread = DownloadThread(video_url, output_path, quality, original_url)
-        self.download_thread.finished.connect(self.on_download_finished)
-        self.download_thread.start()
+        def open_browser():
+            self.parser.open_with_download(parsed_url, original_url)
+
+        import threading
+        t = threading.Thread(target=open_browser)
+        t.daemon = True
+        t.start()
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle('提示')
+        msg_box.setText('已打开浏览器，请点击页面右上角的"下载视频"按钮下载视频')
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.show()
+        QTimer.singleShot(5000, msg_box.accept)
 
     def on_download_finished(self, result):
         """下载完成处理"""

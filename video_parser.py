@@ -1,7 +1,10 @@
 import json
 import os
+import platform
 import re
 import subprocess
+import sys
+import zipfile
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote, urlparse, unquote
@@ -16,8 +19,16 @@ class VideoParser:
     支持多种解析线路，提供视频解析和下载功能
     """
 
+    # ffmpeg 下载地址（使用 gyany.dev 的官方构建，稳定可靠）
+    FFMPEG_DOWNLOAD_URLS = {
+        'Windows': 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
+        'Darwin': 'https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip',  # macOS
+        'Linux': 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz'
+    }
+
     def __init__(self):
         """初始化解析器，定义支持的解析线路"""
+        self._ffmpeg_path = None
         self.parse_apis = {
             'a': {
                 'name': '万能稳定解析',
@@ -168,97 +179,790 @@ class VideoParser:
             print(f"打开浏览器失败: {str(e)}")
             return False
 
-    def _extract_m3u8_from_api(self, parsed_url):
+    def open_with_download(self, parsed_url, original_url=None):
+        """
+        使用 Playwright 打开解析页面，并注入下载按钮
+        用户可以在浏览器中直接下载视频
+
+        Args:
+            parsed_url (str): 解析接口URL
+            original_url (str): 原始视频URL，用于Referer
+
+        Returns:
+            bool: 是否成功打开
+        """
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            print("Playwright 未安装，使用系统默认浏览器打开")
+            webbrowser.open(parsed_url)
+            return True
+
+        try:
+            p = sync_playwright().start()
+
+            browser = None
+            for channel in ['chrome', 'msedge', None]:
+                try:
+                    if channel:
+                        browser = p.chromium.launch(headless=False, channel=channel)
+                    else:
+                        browser = p.chromium.launch(headless=False)
+                    break
+                except Exception:
+                    continue
+
+            if not browser:
+                webbrowser.open(parsed_url)
+                return True
+
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                accept_downloads=True
+            )
+
+            page = context.new_page()
+            page.goto(parsed_url, wait_until='domcontentloaded')
+
+            download_js = r'''
+            (function() {
+                if (document.getElementById('vip-download-btn')) return;
+
+                var btn = document.createElement('button');
+                btn.id = 'vip-download-btn';
+                btn.textContent = '下载视频';
+                btn.style.position = 'fixed';
+                btn.style.top = '20px';
+                btn.style.right = '20px';
+                btn.style.zIndex = '999999';
+                btn.style.padding = '12px 24px';
+                btn.style.background = '#1890ff';
+                btn.style.color = 'white';
+                btn.style.border = 'none';
+                btn.style.borderRadius = '8px';
+                btn.style.fontSize = '14px';
+                btn.style.cursor = 'pointer';
+                btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+                btn.style.transition = 'background 0.3s';
+                btn.onmouseover = function() { btn.style.background = '#40a9ff'; };
+                btn.onmouseout = function() { btn.style.background = '#1890ff'; };
+
+                var statusDiv = document.createElement('div');
+                statusDiv.id = 'vip-download-status';
+                statusDiv.style.position = 'fixed';
+                statusDiv.style.top = '70px';
+                statusDiv.style.right = '20px';
+                statusDiv.style.zIndex = '999999';
+                statusDiv.style.padding = '10px 16px';
+                statusDiv.style.background = 'rgba(0,0,0,0.8)';
+                statusDiv.style.color = 'white';
+                statusDiv.style.borderRadius = '6px';
+                statusDiv.style.fontSize = '12px';
+                statusDiv.style.display = 'none';
+                statusDiv.style.maxWidth = '300px';
+
+                document.body.appendChild(btn);
+                document.body.appendChild(statusDiv);
+
+                function showStatus(msg) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.textContent = msg;
+                }
+
+                function hideStatus() {
+                    setTimeout(function() { statusDiv.style.display = 'none'; }, 3000);
+                }
+
+                function findM3u8Url() {
+                    var videos = document.querySelectorAll('video');
+                    for (var i = 0; i < videos.length; i++) {
+                        if (videos[i].src && videos[i].src.indexOf('.m3u8') > -1) {
+                            return videos[i].src;
+                        }
+                    }
+                    return null;
+                }
+
+                async function downloadM3u8(m3u8Url) {
+                    showStatus('正在获取视频信息...');
+
+                    try {
+                        var response = await fetch(m3u8Url, { credentials: 'include' });
+                        var text = await response.text();
+
+                        var lines = text.split('\n');
+                        var tsUrls = [];
+
+                        for (var i = 0; i < lines.length; i++) {
+                            var line = lines[i].trim();
+                            if (line && line.indexOf('#') !== 0) {
+                                var tsUrl = line;
+                                if (tsUrl.indexOf('http') !== 0) {
+                                    if (tsUrl.indexOf('//') === 0) {
+                                        tsUrl = 'https:' + tsUrl;
+                                    } else if (tsUrl.indexOf('/') === 0) {
+                                        var parsed = new URL(m3u8Url);
+                                        tsUrl = parsed.protocol + '//' + parsed.host + tsUrl;
+                                    } else {
+                                        var base = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+                                        tsUrl = base + tsUrl;
+                                    }
+                                }
+                                tsUrls.push(tsUrl);
+                            }
+                        }
+
+                        showStatus('找到 ' + tsUrls.length + ' 个片段，开始下载...');
+
+                        var downloaded = [];
+                        for (var i = 0; i < tsUrls.length; i++) {
+                            showStatus('下载中: ' + (i + 1) + '/' + tsUrls.length);
+                            try {
+                                var tsResp = await fetch(tsUrls[i], { credentials: 'include' });
+                                var buf = await tsResp.arrayBuffer();
+                                downloaded.push(new Uint8Array(buf));
+                            } catch (e) {
+                                console.log('片段下载失败:', i, e);
+                            }
+                        }
+
+                        showStatus('正在合并视频...');
+
+                        var totalLen = 0;
+                        for (var i = 0; i < downloaded.length; i++) {
+                            totalLen += downloaded[i].length;
+                        }
+
+                        var merged = new Uint8Array(totalLen);
+                        var offset = 0;
+                        for (var i = 0; i < downloaded.length; i++) {
+                            merged.set(downloaded[i], offset);
+                            offset += downloaded[i].length;
+                        }
+
+                        var blob = new Blob([merged], { type: 'video/mp2t' });
+                        var url = URL.createObjectURL(blob);
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'video_' + Date.now() + '.ts';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+
+                        showStatus('下载完成！共 ' + downloaded.length + ' 个片段');
+                        hideStatus();
+
+                    } catch (e) {
+                        showStatus('下载失败: ' + e.message);
+                        hideStatus();
+                    }
+                }
+
+                btn.onclick = function() {
+                    var m3u8Url = findM3u8Url();
+                    if (m3u8Url) {
+                        downloadM3u8(m3u8Url);
+                    } else {
+                        showStatus('未找到视频地址，请先播放视频');
+                        hideStatus();
+                    }
+                };
+
+                showStatus('视频下载按钮已加载，点击右上角按钮下载');
+                setTimeout(function() { statusDiv.style.display = 'none'; }, 3000);
+            })();
+            '''
+
+            page.evaluate(download_js)
+
+            print("已打开浏览器并注入下载按钮，用户可在页面右上角找到下载按钮")
+
+            return True
+
+        except Exception as e:
+            print(f"打开带下载功能的浏览器失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            webbrowser.open(parsed_url)
+            return False
+
+    def _extract_m3u8_from_api(self, parsed_url, depth=0):
         """
         从解析接口返回的页面中提取真实的 m3u8 或直链地址
+
+        Args:
+            parsed_url (str): 解析接口URL
+            depth (int): 当前递归深度，防止无限递归
+
+        Returns:
+            str: 提取到的视频地址，失败返回None
         """
+        if depth > 5:
+            return None
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': parsed_url
         }
-        
+
         try:
             response = requests.get(parsed_url, headers=headers, timeout=15)
             response.encoding = 'utf-8'
             html = response.text
-            
-            # 1. 从 iframe src 中提取
-            iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', html, re.IGNORECASE)
-            if iframe_match:
-                iframe_url = iframe_match.group(1)
-                if iframe_url.startswith('//'):
-                    iframe_url = 'https:' + iframe_url
-                elif iframe_url.startswith('/'):
-                    parsed = urlparse(parsed_url)
-                    iframe_url = f"{parsed.scheme}://{parsed.netloc}{iframe_url}"
-                
-                result = self._extract_m3u8_from_api(iframe_url)
-                if result:
-                    return result
-            
-            # 2. 从 script 标签中提取 m3u8 链接
-            m3u8_patterns = [
-                r'["\']([^"\']+\.m3u8[^"\']*)["\']',
-                r'url["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-                r'src["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-                r'video["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-                r'playurl["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-                r'"url"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-                r'"video"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-                r'"src"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-            ]
-            
-            for pattern in m3u8_patterns:
-                match = re.search(pattern, html, re.IGNORECASE)
-                if match:
-                    url = match.group(1)
-                    url = url.replace('\\/', '/')
-                    if url.startswith('//'):
-                        url = 'https:' + url
+
+            result = self._extract_m3u8_from_html(html, parsed_url, depth)
+            if result:
+                return result
+
+            # requests 提取失败，尝试用 Playwright 渲染页面（处理JS动态加载的情况）
+            print(f"requests 提取失败，尝试使用 Playwright 渲染页面...")
+            playwright_result = self._extract_m3u8_with_playwright(parsed_url)
+            if playwright_result:
+                return playwright_result
+
+            return None
+
+        except Exception as e:
+            print(f"提取m3u8地址失败: {str(e)}")
+            # 如果 requests 失败，也尝试 Playwright
+            try:
+                print(f"requests 请求失败，尝试使用 Playwright...")
+                return self._extract_m3u8_with_playwright(parsed_url)
+            except Exception as e2:
+                print(f"Playwright 也失败: {str(e2)}")
+                return None
+
+    def _extract_m3u8_from_html(self, html, base_url, depth=0):
+        """
+        从HTML内容中提取m3u8地址
+
+        Args:
+            html (str): HTML内容
+            base_url (str): 基础URL，用于处理相对路径
+            depth (int): 递归深度
+
+        Returns:
+            str: 提取到的m3u8地址，失败返回None
+        """
+        parsed_base = urlparse(base_url)
+
+        # 1. 从 iframe src 中提取
+        iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if iframe_match:
+            iframe_url = iframe_match.group(1)
+            if iframe_url.startswith('//'):
+                iframe_url = 'https:' + iframe_url
+            elif iframe_url.startswith('/'):
+                iframe_url = f"{parsed_base.scheme}://{parsed_base.netloc}{iframe_url}"
+            elif not iframe_url.startswith('http'):
+                # 相对路径
+                iframe_url = f"{parsed_base.scheme}://{parsed_base.netloc}/{iframe_url.lstrip('/')}"
+
+            result = self._extract_m3u8_from_api(iframe_url, depth + 1)
+            if result:
+                return result
+
+        # 2. 从各种 script 变量和配置中提取 m3u8 链接
+        m3u8_patterns = [
+            r'["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'url["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'src["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'video["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'playurl["\']?\s*[:=]\s*["\']([^"\']+)["\']',
+            r'play_url["\']?\s*[:=]\s*["\']([^"\']+)["\']',
+            r'm3u8["\']?\s*[:=]\s*["\']([^"\']+)["\']',
+            r'"url"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+            r'"video"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+            r'"src"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+            r'"m3u8"\s*:\s*"([^"]+)"',
+            r'url\s*=\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'source\s*=\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+        ]
+
+        for pattern in m3u8_patterns:
+            matches = re.findall(pattern, html, re.IGNORECASE)
+            for match in matches:
+                url = match
+                url = url.replace('\\/', '/').replace('\\', '')
+                if url.startswith('//'):
+                    url = 'https:' + url
+                elif url.startswith('/'):
+                    url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
+                if '.m3u8' in url.lower() and self.is_valid_url(url):
                     return url
-            
-            # 3. 从 JSON 数据中提取
-            json_match = re.search(r'var\s+config\s*=\s*({.*?});', html, re.DOTALL)
+
+        # 3. 从 JSON 数据中提取（var config = {...}）
+        json_patterns = [
+            r'var\s+config\s*=\s*({.*?});',
+            r'var\s+playerConfig\s*=\s*({.*?});',
+            r'var\s+videoConfig\s*=\s*({.*?});',
+            r'let\s+config\s*=\s*({.*?});',
+            r'const\s+config\s*=\s*({.*?});',
+        ]
+
+        for json_pattern in json_patterns:
+            json_match = re.search(json_pattern, html, re.DOTALL)
             if json_match:
                 try:
                     config = json.loads(json_match.group(1))
-                    if 'url' in config:
-                        return config['url']
-                    if 'video' in config:
-                        return config['video']
-                    if 'src' in config:
-                        return config['src']
+                    for key in ['url', 'video', 'src', 'm3u8', 'playUrl', 'play_url', 'videoUrl', 'video_url']:
+                        if key in config and isinstance(config[key], str):
+                            url = config[key].replace('\\/', '/')
+                            if url.startswith('//'):
+                                url = 'https:' + url
+                            elif url.startswith('/'):
+                                url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
+                            if '.m3u8' in url.lower() and self.is_valid_url(url):
+                                return url
                 except:
                     pass
-            
-            # 4. 从 player 配置中提取
-            player_match = re.search(r'player\s*\(\s*{(.*?)}\s*\)', html, re.DOTALL)
-            if player_match:
-                url_match = re.search(r'url\s*:\s*["\']([^"\']+)["\']', player_match.group(1))
-                if url_match:
-                    return url_match.group(1)
-            
-            # 5. 从 CKPlayer 配置中提取
-            ck_match = re.search(r'video\s*:\s*["\']([^"\']+)["\']', html)
-            if ck_match:
-                return ck_match.group(1)
-            
+
+        # 4. 从 player 函数调用中提取
+        player_match = re.search(r'player\s*\(\s*{(.*?)}\s*\)', html, re.DOTALL)
+        if player_match:
+            url_match = re.search(r'url\s*:\s*["\']([^"\']+)["\']', player_match.group(1))
+            if url_match:
+                url = url_match.group(1).replace('\\/', '/')
+                if url.startswith('//'):
+                    url = 'https:' + url
+                elif url.startswith('/'):
+                    url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
+                if '.m3u8' in url.lower() and self.is_valid_url(url):
+                    return url
+
+        # 5. 从 CKPlayer 配置中提取
+        ck_match = re.search(r'video\s*:\s*["\']([^"\']+)["\']', html)
+        if ck_match:
+            url = ck_match.group(1).replace('\\/', '/')
+            if url.startswith('//'):
+                url = 'https:' + url
+            elif url.startswith('/'):
+                url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
+            if '.m3u8' in url.lower() and self.is_valid_url(url):
+                return url
+
+        # 6. 从 eval 或 decodeURIComponent 编码的内容中提取
+        encoded_match = re.search(r'decodeURIComponent\(["\']([^"\']+)["\']\)', html)
+        if encoded_match:
+            try:
+                decoded = unquote(encoded_match.group(1))
+                m3u8_match = re.search(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', decoded, re.IGNORECASE)
+                if m3u8_match:
+                    return m3u8_match.group(0)
+            except:
+                pass
+
+        # 7. 尝试直接从页面中查找所有URL，筛选m3u8
+        all_urls = re.findall(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', html, re.IGNORECASE)
+        for url in all_urls:
+            if self.is_valid_url(url):
+                return url
+
+        return None
+
+    def _extract_m3u8_with_playwright(self, url):
+        """
+        使用 Playwright 渲染页面后提取 m3u8 地址
+        处理 JavaScript 动态加载视频地址的情况
+
+        Args:
+            url (str): 页面URL
+
+        Returns:
+            str: 提取到的m3u8地址，失败返回None
+        """
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            print("Playwright 未安装，跳过 Playwright 提取方式")
             return None
-            
+
+        try:
+            with sync_playwright() as p:
+                browser = None
+                for channel in ['chrome', 'msedge', None]:
+                    try:
+                        if channel:
+                            browser = p.chromium.launch(headless=True, channel=channel)
+                        else:
+                            browser = p.chromium.launch(headless=True)
+                        break
+                    except Exception:
+                        continue
+
+                if not browser:
+                    print("无法启动浏览器")
+                    return None
+
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    extra_http_headers={
+                        'Referer': url
+                    }
+                )
+
+                page = context.new_page()
+
+                m3u8_urls = []
+
+                def handle_request(request):
+                    req_url = request.url
+                    if '.m3u8' in req_url.lower():
+                        m3u8_urls.append(req_url)
+                        print(f"捕获到 m3u8 请求: {req_url[:100]}...")
+
+                def handle_response(response):
+                    resp_url = response.url
+                    if '.m3u8' in resp_url.lower():
+                        if resp_url not in m3u8_urls:
+                            m3u8_urls.append(resp_url)
+                            print(f"捕获到 m3u8 响应: {resp_url[:100]}...")
+
+                page.on('request', handle_request)
+                page.on('response', handle_response)
+
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=30000)
+                except Exception:
+                    try:
+                        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    except Exception:
+                        pass
+
+                # 等待JS执行和网络请求
+                for _ in range(8):
+                    if m3u8_urls:
+                        break
+                    page.wait_for_timeout(1000)
+
+                # 检查是否捕获到了 m3u8 地址
+                for m3u8_url in m3u8_urls:
+                    if self.is_valid_url(m3u8_url):
+                        browser.close()
+                        return m3u8_url
+
+                # 如果网络请求没捕获到，再从页面内容中提取
+                try:
+                    html = page.content()
+                    result = self._extract_m3u8_from_html_simple(html, url)
+                    if result:
+                        browser.close()
+                        return result
+                except Exception:
+                    pass
+
+                browser.close()
+                return None
+
         except Exception as e:
-            print(f"提取m3u8地址失败: {str(e)}")
+            print(f"Playwright 提取 m3u8 失败: {str(e)}")
             return None
+
+    def _extract_m3u8_from_html_simple(self, html, base_url):
+        """
+        简单版的HTML提取，只做正则匹配，不递归处理iframe（避免循环调用）
+        """
+        parsed_base = urlparse(base_url)
+
+        # 搜索所有m3u8 URL
+        all_urls = re.findall(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', html, re.IGNORECASE)
+        for url in all_urls:
+            if self.is_valid_url(url):
+                return url
+
+        # 从各种 script 变量中提取
+        patterns = [
+            r'["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'url["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'"url"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+            r'"video"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+            r'"src"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+            r'"m3u8"\s*:\s*"([^"]+)"',
+        ]
+
+        for pattern in patterns:
+            matches = re.findall(pattern, html, re.IGNORECASE)
+            for match in matches:
+                url = match
+                url = url.replace('\\/', '/').replace('\\', '')
+                if url.startswith('//'):
+                    url = 'https:' + url
+                elif url.startswith('/'):
+                    url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
+                if '.m3u8' in url.lower() and self.is_valid_url(url):
+                    return url
+
+        return None
+
+    def _merge_ts_files(self, ts_files, output_path):
+        """
+        合并多个 ts 文件为一个 MP4 文件
+
+        Args:
+            ts_files (list): ts 文件路径列表
+            output_path (str): 输出目录
+
+        Returns:
+            dict: 合并结果
+        """
+        if not ts_files:
+            return {
+                'success': False,
+                'message': '没有需要合并的 ts 文件',
+                'data': None
+            }
+
+        # 排序 ts 文件
+        ts_files.sort()
+
+        # 创建临时文件列表
+        list_file = os.path.join(output_path, 'ts_list.txt')
+        with open(list_file, 'w', encoding='utf-8') as f:
+            for ts_file in ts_files:
+                f.write(f"file '{os.path.basename(ts_file)}'\n")
+
+        # 输出文件名
+        output_file = os.path.join(output_path, 'video_download.mp4')
+
+        # 使用 ffmpeg 合并
+        ffmpeg_path = self._get_ffmpeg_path()
+        if not ffmpeg_path:
+            return {
+                'success': False,
+                'message': 'ffmpeg 不可用',
+                'data': None
+            }
+
+        cmd = [
+            ffmpeg_path,
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', list_file,
+            '-c', 'copy',
+            '-bsf:a', 'aac_adtstoasc',
+            '-y',
+            output_file
+        ]
+
+        try:
+            print(f"合并 ts 文件: {' '.join(cmd)}")
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=output_path,
+                timeout=300
+            )
+
+            if result.returncode == 0:
+                # 清理临时文件
+                try:
+                    os.remove(list_file)
+                    for ts_file in ts_files:
+                        os.remove(ts_file)
+                except:
+                    pass
+
+                return {
+                    'success': True,
+                    'message': f'合并成功，输出文件: {output_file}',
+                    'data': {
+                        'output_file': output_file
+                    }
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f'合并失败: {result.stderr[:200]}',
+                    'data': None
+                }
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'合并异常: {str(e)}',
+                'data': None
+            }
+
+    def _get_ffmpeg_path(self):
+        """
+        获取 ffmpeg 可执行文件路径
+        优先级：1. imageio-ffmpeg 内置；2. 程序目录的 ffmpeg.exe；3. libs目录；4. 系统 PATH；5. 自动下载
+
+        Returns:
+            str: ffmpeg 可执行文件的完整路径，None 表示不可用
+        """
+        if self._ffmpeg_path:
+            return self._ffmpeg_path
+
+        # 1. 优先使用 imageio-ffmpeg 内置的 ffmpeg（最简单，无需额外下载）
+        try:
+            print("尝试使用 imageio-ffmpeg...")
+            import imageio_ffmpeg
+            imageio_ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+            print(f"imageio-ffmpeg 返回路径: {imageio_ffmpeg_path}")
+            if imageio_ffmpeg_path and os.path.exists(imageio_ffmpeg_path):
+                self._ffmpeg_path = imageio_ffmpeg_path
+                print(f"✓ 找到 imageio-ffmpeg 内置的 ffmpeg: {imageio_ffmpeg_path}")
+                return self._ffmpeg_path
+            else:
+                print(f"✗ imageio-ffmpeg 路径不存在: {imageio_ffmpeg_path}")
+        except Exception as e:
+            print(f"✗ imageio-ffmpeg 导入或调用失败: {type(e).__name__}: {e}")
+
+        # 2. 检查程序目录（开发环境或打包后）
+        program_dir = self._get_program_dir()
+        local_ffmpeg = os.path.join(program_dir, 'ffmpeg.exe')
+        if os.path.exists(local_ffmpeg):
+            self._ffmpeg_path = local_ffmpeg
+            return self._ffmpeg_path
+
+        # 3. 打包后的 libs 目录
+        libs_ffmpeg = os.path.join(program_dir, 'libs', 'ffmpeg.exe')
+        if os.path.exists(libs_ffmpeg):
+            self._ffmpeg_path = libs_ffmpeg
+            return self._ffmpeg_path
+
+        # 4. 检查系统 PATH
+        import shutil
+        system_ffmpeg = shutil.which('ffmpeg')
+        if system_ffmpeg:
+            self._ffmpeg_path = system_ffmpeg
+            return self._ffmpeg_path
+
+        # 5. 尝试自动下载
+        print("⚠️  所有查找方式都失败了，正在尝试自动下载 ffmpeg（约 83MB，可能需要几分钟）...")
+        print("💡 提示：如果下载太慢，可以手动下载 ffmpeg 并放到程序目录")
+        downloaded_path = self._download_ffmpeg()
+        if downloaded_path:
+            self._ffmpeg_path = downloaded_path
+            return self._ffmpeg_path
+
+        return None
+
+    def _get_program_dir(self):
+        """获取程序目录"""
+        if getattr(sys, 'frozen', False):
+            # 打包后的 exe
+            return os.path.dirname(sys.executable)
+        else:
+            # 开发环境
+            return os.path.dirname(os.path.abspath(__file__))
+
+    def _download_ffmpeg(self):
+        """
+        自动下载 ffmpeg 到程序目录
+
+        Returns:
+            str: 下载后的 ffmpeg 可执行文件路径，None 表示下载失败
+        """
+        import shutil
+        import tempfile
+
+        system = platform.system()
+        download_url = self.FFMPEG_DOWNLOAD_URLS.get(system)
+        if not download_url:
+            print(f"不支持自动下载 ffmpeg: {system}")
+            return None
+
+        program_dir = self._get_program_dir()
+        ffmpeg_target = os.path.join(program_dir, 'ffmpeg.exe' if system == 'Windows' else 'ffmpeg')
+
+        try:
+            print(f"下载 ffmpeg: {download_url}")
+            print("这可能需要几分钟，请耐心等待...")
+
+            # 下载到临时目录
+            temp_dir = tempfile.mkdtemp()
+            zip_path = os.path.join(temp_dir, 'ffmpeg.zip')
+
+            # 流式下载，显示进度
+            response = requests.get(download_url, stream=True, timeout=300)
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+
+            with open(zip_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            progress = int(50 * downloaded / total_size)
+                            print(f"\r下载进度: [{('#' * progress).ljust(50)}] {int(100 * downloaded / total_size)}%", end='', flush=True)
+
+            print("\n下载完成，正在解压...")
+
+            # 解压 zip 文件
+            if system == 'Windows':
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    # 找到 ffmpeg.exe
+                    for file in zip_ref.namelist():
+                        if file.endswith('ffmpeg.exe'):
+                            # 解压到临时目录
+                            zip_ref.extract(file, temp_dir)
+                            extracted_path = os.path.join(temp_dir, file)
+                            # 复制到程序目录
+                            shutil.copy2(extracted_path, ffmpeg_target)
+                            print(f"ffmpeg 已安装到: {ffmpeg_target}")
+                            break
+            else:
+                # Linux/MacOS 需要额外处理 tar.xz
+                import tarfile
+                tar_path = os.path.join(temp_dir, 'ffmpeg.tar.xz')
+                shutil.move(zip_path, tar_path)
+                with tarfile.open(tar_path, 'r:xz') as tar:
+                    for member in tar.getmembers():
+                        if member.name.endswith('ffmpeg'):
+                            tar.extract(member, temp_dir)
+                            extracted_path = os.path.join(temp_dir, member.name)
+                            shutil.copy2(extracted_path, ffmpeg_target)
+                            os.chmod(ffmpeg_target, 0o755)
+                            print(f"ffmpeg 已安装到: {ffmpeg_target}")
+                            break
+
+            # 清理临时目录
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+            if os.path.exists(ffmpeg_target):
+                return ffmpeg_target
+            else:
+                print("解压后未找到 ffmpeg 可执行文件")
+                return None
+
+        except requests.exceptions.Timeout:
+            print("下载超时，请检查网络连接")
+            return None
+        except requests.exceptions.RequestException as e:
+            print(f"下载失败: {str(e)}")
+            return None
+        except zipfile.BadZipFile:
+            print("下载的文件损坏，请重试")
+            return None
+        except Exception as e:
+            print(f"安装 ffmpeg 时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def _check_ffmpeg_available(self):
+        """检查 ffmpeg 是否可用"""
+        return self._get_ffmpeg_path() is not None
+
+    def _get_ffmpeg_executable(self):
+        """获取 ffmpeg 可执行文件路径（供外部调用）"""
+        return self._get_ffmpeg_path()
+
 
     def download_video(self, video_url, output_path=None, quality='best', original_url=None):
         """
-        使用yt-dlp下载视频（优化速度版本）
-        
+        使用yt-dlp下载视频
+
         Args:
             video_url (str): 视频链接（可以是原始视频链接或解析后的链接）
             output_path (str): 输出目录，默认为当前目录
             quality (str): 视频质量
-            original_url (str): 原始视频链接
-            
+            original_url (str): 原始视频链接（用于错误提示等）
+
         Returns:
             dict: 下载结果
         """
@@ -277,127 +981,244 @@ class VideoParser:
 
         # 判断是否是解析接口链接
         is_api_url = any(api['url'].split('?')[0] in video_url for api in self.parse_apis.values())
-        
+
         actual_url = video_url
-        
+        referer_url = video_url
+
         # 如果是解析接口链接，尝试提取真实视频地址
         if is_api_url:
             print(f"检测到解析接口链接，正在提取真实视频地址...")
             extracted_url = self._extract_m3u8_from_api(video_url)
             if extracted_url:
                 actual_url = extracted_url
+                referer_url = video_url
                 print(f"提取到真实地址: {actual_url}")
             else:
-                if original_url:
-                    actual_url = original_url
-                else:
-                    return {
-                        'success': False,
-                        'message': '无法从解析接口提取真实视频地址，请尝试直接复制解析链接到浏览器播放',
-                        'data': None
-                    }
+                return {
+                    'success': False,
+                    'message': '无法从解析接口提取真实视频地址，请尝试直接复制解析链接到浏览器播放',
+                    'data': None
+                }
 
-        quality_map = {
-            'best': 'bestvideo+bestaudio/best',
-            'worst': 'worstvideo+worstaudio/worst',
-            '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-            '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-            '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-            '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]'
+        is_m3u8 = '.m3u8' in actual_url.lower()
+        ffmpeg_available = self._check_ffmpeg_available()
+
+        # 尝试多种下载策略
+        strategies = []
+
+        if is_m3u8:
+            # 策略1: yt-dlp 原生 HLS 下载（不需要ffmpeg）
+            strategies.append(('yt-dlp原生HLS', self._build_yt_dlp_cmd(
+                actual_url, output_path, quality, referer_url,
+                use_native_hls=True, use_ffmpeg_downloader=False
+            )))
+
+            # 策略2: yt-dlp + ffmpeg 下载器（如果ffmpeg可用）
+            if ffmpeg_available:
+                strategies.append(('yt-dlp+ffmpeg', self._build_yt_dlp_cmd(
+                    actual_url, output_path, quality, referer_url,
+                    use_native_hls=False, use_ffmpeg_downloader=True
+                )))
+
+            # 策略3: 直接用 ffmpeg 下载（如果ffmpeg可用）
+            if ffmpeg_available:
+                strategies.append(('ffmpeg直连', None))  # None 表示特殊处理
+        else:
+            # 非m3u8链接，直接用yt-dlp
+            strategies.append(('yt-dlp', self._build_yt_dlp_cmd(
+                actual_url, output_path, quality, referer_url,
+                use_native_hls=False, use_ffmpeg_downloader=ffmpeg_available
+            )))
+
+        last_error = ''
+        for strategy_name, cmd in strategies:
+            print(f"\n尝试下载策略: {strategy_name}")
+
+            if strategy_name == 'ffmpeg直连':
+                # 直接用 ffmpeg 下载
+                result = self._download_with_ffmpeg(actual_url, output_path, referer_url)
+                if result['success']:
+                    return result
+                last_error = result['message']
+                continue
+
+            if cmd is None:
+                continue
+
+            try:
+                print(f"执行命令: {' '.join(cmd)}")
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=output_path,
+                    timeout=3600
+                )
+
+                if result.returncode == 0:
+                    return {
+                        'success': True,
+                        'message': f'视频下载成功（{strategy_name}）',
+                        'data': {
+                            'output_path': output_path,
+                            'stdout': result.stdout
+                        }
+                    }
+                else:
+                    error_msg = result.stderr if result.stderr else result.stdout
+                    last_error = error_msg
+                    print(f"{strategy_name} 失败: {error_msg[:200]}...")
+            except FileNotFoundError:
+                last_error = '未找到yt-dlp，请确保已安装'
+                break
+            except subprocess.TimeoutExpired:
+                last_error = '下载超时'
+                continue
+            except Exception as e:
+                last_error = f'下载过程发生错误: {str(e)}'
+                continue
+
+        # 所有策略都失败了
+        if not ffmpeg_available and is_m3u8:
+            return {
+                'success': False,
+                'message': f'下载失败。检测到是m3u8格式，当前未安装ffmpeg，建议安装ffmpeg以提高下载成功率。\n\n错误详情: {last_error[:500]}',
+                'data': None
+            }
+
+        return {
+            'success': False,
+            'message': f'下载失败: {last_error}',
+            'data': None
         }
 
-        format_spec = quality_map.get(quality, quality_map['best'])
+    def _build_yt_dlp_cmd(self, actual_url, output_path, quality, referer_url,
+                          use_native_hls=False, use_ffmpeg_downloader=False):
+        """构建 yt-dlp 命令"""
+        quality_map = {
+            'best': 'best',
+            'worst': 'worst',
+            '1080p': 'best[height<=1080]',
+            '720p': 'best[height<=720]',
+            '480p': 'best[height<=480]',
+            '360p': 'best[height<=360]'
+        }
+        format_spec = quality_map.get(quality, 'best')
 
-        # 构建优化的 yt-dlp 命令（提升下载速度）
         cmd = [
             'yt-dlp',
             '-f', format_spec,
             '-o', os.path.join(output_path, '%(title)s.%(ext)s'),
             '--merge-output-format', 'mp4',
             '--no-warnings',
-            # 速度优化参数
-            '--concurrent-fragments', '5',      # 并发下载5个片段
-            '--buffer-size', '16K',             # 增大缓冲区
-            '--http-chunk-size', '10M',         # HTTP分块大小
-            '--retries', '10',                  # 重试次数
-            '--fragment-retries', '10',         # 片段重试次数
-            '--no-check-certificate',           # 跳过证书验证
-            '--prefer-free-formats',            # 优先免费格式
-            '--no-playlist',                    # 不下载播放列表
+            '--retries', '10',
+            '--fragment-retries', '10',
+            '--no-check-certificate',
+            '--no-playlist',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--referer', referer_url,
+            '--add-header', f'Referer: {referer_url}',
         ]
 
-        # 如果是 m3u8 链接，添加相关参数
-        if '.m3u8' in actual_url.lower():
-            cmd.extend([
-                '--downloader', 'ffmpeg',
-                '--hls-prefer-native',
-                '--hls-use-mpegts',
-            ])
+        is_m3u8 = '.m3u8' in actual_url.lower()
+        if is_m3u8:
+            if use_ffmpeg_downloader:
+                cmd.extend([
+                    '--downloader', 'ffmpeg',
+                    '--hls-use-mpegts',
+                ])
+            elif use_native_hls:
+                cmd.extend([
+                    '--hls-prefer-native',
+                    '--concurrent-fragments', '5',
+                ])
+            else:
+                cmd.extend([
+                    '--concurrent-fragments', '5',
+                ])
 
         cmd.append(actual_url)
+        return cmd
 
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=output_path
-            )
-
-            if result.returncode == 0:
-                return {
-                    'success': True,
-                    'message': '视频下载成功',
-                    'data': {
-                        'output_path': output_path,
-                        'stdout': result.stdout
-                    }
-                }
-            else:
-                # 如果 yt-dlp 失败，尝试用 ffmpeg 直接下载 m3u8
-                if '.m3u8' in actual_url.lower():
-                    return self._download_with_ffmpeg(actual_url, output_path)
-                return {
-                    'success': False,
-                    'message': f'下载失败: {result.stderr}',
-                    'data': None
-                }
-        except FileNotFoundError:
-            return {
-                'success': False,
-                'message': '未找到yt-dlp，请确保已安装',
-                'data': None
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'message': f'下载过程发生错误: {str(e)}',
-                'data': None
-            }
-
-    def _download_with_ffmpeg(self, m3u8_url, output_path):
+    def _download_with_ffmpeg(self, m3u8_url, output_path, referer_url=None):
         """
         使用 ffmpeg 下载 m3u8 视频
+
+        Args:
+            m3u8_url (str): m3u8 视频地址
+            output_path (str): 输出目录
+            referer_url (str): Referer 地址，可选
+
+        Returns:
+            dict: 下载结果
         """
+        ffmpeg_path = self._get_ffmpeg_path()
+        if not ffmpeg_path:
+            return {
+                'success': False,
+                'message': 'ffmpeg 不可用',
+                'data': None
+            }
+
         try:
             output_file = os.path.join(output_path, 'video_download.mp4')
-            
+
+            # 先下载 m3u8 文件并修复相对路径
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            }
+            if referer_url:
+                headers['Referer'] = referer_url
+
+            print("正在下载并修复 m3u8 文件...")
+            m3u8_response = requests.get(m3u8_url, headers=headers, timeout=30)
+            if m3u8_response.status_code != 200:
+                return {
+                    'success': False,
+                    'message': f'获取 m3u8 文件失败: HTTP {m3u8_response.status_code}',
+                    'data': None
+                }
+
+            m3u8_content = m3u8_response.text
+            base_url = m3u8_url.rsplit('/', 1)[0] + '/'
+            m3u8_abs_path = self._fix_m3u8_relative_paths(m3u8_content, base_url)
+
+            # 保存修复后的 m3u8 文件
+            fixed_m3u8_path = os.path.join(output_path, 'video_fixed.m3u8')
+            with open(fixed_m3u8_path, 'w', encoding='utf-8') as f:
+                f.write(m3u8_abs_path)
+
+            print(f"已修复 m3u8 文件，保存到: {fixed_m3u8_path}")
+
             cmd = [
-                'ffmpeg',
-                '-i', m3u8_url,
+                ffmpeg_path,
+                '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            ]
+
+            if referer_url:
+                cmd.extend(['-headers', f'Referer: {referer_url}\r\n'])
+
+            cmd.extend([
+                '-protocol_whitelist', 'file,http,https,tcp,tls,crypto',
+                '-i', fixed_m3u8_path,
                 '-c', 'copy',
                 '-bsf:a', 'aac_adtstoasc',
                 '-y',
                 output_file
-            ]
-            
+            ])
+
+            print(f"执行ffmpeg命令: {' '.join(cmd)}")
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 cwd=output_path
             )
-            
+
+            # 清理临时文件
+            if os.path.exists(fixed_m3u8_path):
+                os.remove(fixed_m3u8_path)
+
             if result.returncode == 0:
                 return {
                     'success': True,
@@ -408,9 +1229,10 @@ class VideoParser:
                     }
                 }
             else:
+                error_msg = result.stderr if result.stderr else result.stdout
                 return {
                     'success': False,
-                    'message': f'ffmpeg下载失败: {result.stderr}',
+                    'message': f'ffmpeg下载失败: {error_msg}',
                     'data': None
                 }
         except FileNotFoundError:
@@ -425,6 +1247,52 @@ class VideoParser:
                 'message': f'ffmpeg下载过程发生错误: {str(e)}',
                 'data': None
             }
+
+    def _fix_m3u8_relative_paths(self, m3u8_content, base_url):
+        """
+        修复 m3u8 文件中的相对路径，转换为绝对路径
+
+        Args:
+            m3u8_content (str): m3u8 文件内容
+            base_url (str): 基础URL（用于拼接相对路径）
+
+        Returns:
+            str: 修复后的 m3u8 内容
+        """
+        from urllib.parse import urljoin
+
+        lines = m3u8_content.split('\n')
+        fixed_lines = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                fixed_lines.append('')
+                continue
+
+            # 注释行保留原样
+            if line.startswith('#'):
+                fixed_lines.append(line)
+                continue
+
+            # URL行，处理相对路径
+            url = line
+            if not url.startswith('http'):
+                # 处理各种相对路径情况
+                if url.startswith('//'):
+                    # 协议相对路径: //example.com/path
+                    url = 'https:' + url
+                elif url.startswith('/'):
+                    # 绝对路径: /path
+                    parsed = urlparse(base_url)
+                    url = f"{parsed.scheme}://{parsed.netloc}{url}"
+                else:
+                    # 相对路径: path
+                    url = urljoin(base_url, url)
+
+            fixed_lines.append(url)
+
+        return '\n'.join(fixed_lines)
 
     # ==================== 批量下载功能 ====================
 
