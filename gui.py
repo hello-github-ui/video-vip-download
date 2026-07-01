@@ -711,18 +711,17 @@ class MainWindow(QMainWindow):
         self.on_open_browser()
 
     def on_download_click(self):
-        """处理下载按钮点击 - 打开浏览器并注入下载按钮"""
+        """处理下载按钮点击 - 在浏览器中打开并注入下载按钮"""
         if not hasattr(self, 'parsed_url'):
             QMessageBox.warning(self, '警告', '请先解析视频链接！')
             return
 
         parsed_url = self.parsed_url
-        original_url = getattr(self, 'original_url', None)
 
         print(f"正在打开浏览器并注入下载按钮...")
 
         def open_browser():
-            self.parser.open_with_download(parsed_url, original_url)
+            self.parser.open_in_browser(parsed_url, inject_download=True)
 
         import threading
         t = threading.Thread(target=open_browser)
