@@ -70,3 +70,5 @@ Thumbs.db
 downloads/
 temp/
 tmp/
+browser_data/
+libs/

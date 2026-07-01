@@ -1,17 +1,16 @@
-import json
 import os
 import platform
 import re
 import subprocess
 import sys
-import zipfile
 import webbrowser
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import quote, urlparse, unquote
+from urllib.parse import quote, urlparse
 
 import requests
 from bs4 import BeautifulSoup
-
+from api import parse_apis
 
 class VideoParser:
     """
@@ -29,62 +28,12 @@ class VideoParser:
     def __init__(self):
         """初始化解析器，定义支持的解析线路"""
         self._ffmpeg_path = None
-        self.parse_apis = {
-            'a': {
-                'name': '万能稳定解析',
-                'url': 'https://jx.m3u8.tv/jiexi/?url=',
-                'status': 'active',
-                'note': '推荐使用'
-            },
-            'b': {
-                'name': '夜幕解析',
-                'url': 'https://www.yemu.xyz/?url=',
-                'status': 'deprecated',
-                'note': '实测已不可用'
-            },
-            'c': {
-                'name': '虾米解析',
-                'url': 'https://jx.xmflv.com/?url=',
-                'status': 'active',
-                'note': ''
-            },
-            'd': {
-                'name': '冰豆解析',
-                'url': 'https://bd.jx.cn/?url=',
-                'status': 'active',
-                'note': ''
-            },
-            'e': {
-                'name': 'JSON解析',
-                'url': 'https://jx.jsonplayer.com/player/?url=',
-                'status': 'active',
-                'note': ''
-            },
-            'f': {
-                'name': 'm3u8解析',
-                'url': 'https://jx.m3u8.tv/jiexi/?url=',
-                'status': 'deprecated',
-                'note': '实测已不可用'
-            },
-            'g': {
-                'name': '阳途解析',
-                'url': 'https://jx.yangtu.top/?url=',
-                'status': 'active',
-                'note': ''
-            },
-            'h': {
-                'name': '千奇解析',
-                'url': 'https://api.qianqi.net/vip/?url=',
-                'status': 'active',
-                'note': ''
-            },
-            'i': {
-                'name': 'CK解析',
-                'url': 'https://www.ckplayer.vip/jiexi/?url=',
-                'status': 'active',
-                'note': ''
-            }
-        }
+        self._m3u8_url = None
+        self._context = None
+        self._page = None
+        self._playwright = None
+        # 获取最新可用的api解析接口
+        self.parse_apis = parse_apis()
 
         self.supported_platforms = {
             '腾讯视频': ['v.qq.com', 'qq.com'],
@@ -98,10 +47,6 @@ class VideoParser:
             '土豆视频': ['tudou.com'],
             'AcFun': ['acfun.cn']
         }
-
-    def get_all_apis(self):
-        """获取所有解析接口信息"""
-        return self.parse_apis
 
     def get_active_apis(self):
         """获取可用的解析接口"""
@@ -127,7 +72,7 @@ class VideoParser:
                     return platform
         return '其他'
 
-    def parse_url(self, video_url, api_key='a'):
+    def parse_url(self, video_url, api):
         """
         根据选择的解析线路生成解析链接
         """
@@ -138,14 +83,14 @@ class VideoParser:
                 'data': None
             }
 
-        if api_key not in self.parse_apis:
+        if api not in self.parse_apis:
             return {
                 'success': False,
                 'message': '无效的解析线路选择',
                 'data': None
             }
 
-        api_info = self.parse_apis[api_key]
+        api_info = api
 
         if api_info['status'] == 'deprecated':
             return {
@@ -164,473 +109,20 @@ class VideoParser:
                 'original_url': video_url,
                 'parsed_url': parsed_url,
                 'api_name': api_info['name'],
-                'api_key': api_key
+                'api': api_info
             }
         }
 
     def open_in_browser(self, url):
         """
-        在系统默认浏览器中打开解析链接
+        在浏览器中打开链接
         """
         try:
             webbrowser.open(url)
             return True
         except Exception as e:
-            print(f"打开浏览器失败: {str(e)}")
+            print(f"打开默认浏览器失败: {str(e)}")
             return False
-
-    def _extract_m3u8_from_api(self, parsed_url, depth=0):
-        """
-        从解析接口返回的页面中提取真实的 m3u8 或直链地址
-
-        Args:
-            parsed_url (str): 解析接口URL
-            depth (int): 当前递归深度，防止无限递归
-
-        Returns:
-            str: 提取到的视频地址，失败返回None
-        """
-        if depth > 5:
-            return None
-
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': parsed_url
-        }
-
-        try:
-            response = requests.get(parsed_url, headers=headers, timeout=15)
-            response.encoding = 'utf-8'
-            html = response.text
-
-            result = self._extract_m3u8_from_html(html, parsed_url, depth)
-            if result:
-                return result
-
-            # requests 提取失败，尝试用 Playwright 渲染页面（处理JS动态加载的情况）
-            print(f"requests 提取失败，尝试使用 Playwright 渲染页面...")
-            playwright_result = self._extract_m3u8_with_playwright(parsed_url)
-            if playwright_result:
-                return playwright_result
-
-            return None
-
-        except Exception as e:
-            print(f"提取m3u8地址失败: {str(e)}")
-            # 如果 requests 失败，也尝试 Playwright
-            try:
-                print(f"requests 请求失败，尝试使用 Playwright...")
-                return self._extract_m3u8_with_playwright(parsed_url)
-            except Exception as e2:
-                print(f"Playwright 也失败: {str(e2)}")
-                return None
-
-    def _extract_m3u8_from_html(self, html, base_url, depth=0):
-        """
-        从HTML内容中提取m3u8地址
-
-        Args:
-            html (str): HTML内容
-            base_url (str): 基础URL，用于处理相对路径
-            depth (int): 递归深度
-
-        Returns:
-            str: 提取到的m3u8地址，失败返回None
-        """
-        parsed_base = urlparse(base_url)
-
-        # 1. 从 iframe src 中提取
-        iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', html, re.IGNORECASE)
-        if iframe_match:
-            iframe_url = iframe_match.group(1)
-            if iframe_url.startswith('//'):
-                iframe_url = 'https:' + iframe_url
-            elif iframe_url.startswith('/'):
-                iframe_url = f"{parsed_base.scheme}://{parsed_base.netloc}{iframe_url}"
-            elif not iframe_url.startswith('http'):
-                # 相对路径
-                iframe_url = f"{parsed_base.scheme}://{parsed_base.netloc}/{iframe_url.lstrip('/')}"
-
-            result = self._extract_m3u8_from_api(iframe_url, depth + 1)
-            if result:
-                return result
-
-        # 2. 从各种 script 变量和配置中提取 m3u8 链接
-        m3u8_patterns = [
-            r'["\']([^"\']+\.m3u8[^"\']*)["\']',
-            r'url["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-            r'src["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-            r'video["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-            r'playurl["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-            r'play_url["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-            r'm3u8["\']?\s*[:=]\s*["\']([^"\']+)["\']',
-            r'"url"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-            r'"video"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-            r'"src"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-            r'"m3u8"\s*:\s*"([^"]+)"',
-            r'url\s*=\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-            r'source\s*=\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-        ]
-
-        for pattern in m3u8_patterns:
-            matches = re.findall(pattern, html, re.IGNORECASE)
-            for match in matches:
-                url = match
-                url = url.replace('\\/', '/').replace('\\', '')
-                if url.startswith('//'):
-                    url = 'https:' + url
-                elif url.startswith('/'):
-                    url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
-                if '.m3u8' in url.lower() and self.is_valid_url(url):
-                    return url
-
-        # 3. 从 JSON 数据中提取（var config = {...}）
-        json_patterns = [
-            r'var\s+config\s*=\s*({.*?});',
-            r'var\s+playerConfig\s*=\s*({.*?});',
-            r'var\s+videoConfig\s*=\s*({.*?});',
-            r'let\s+config\s*=\s*({.*?});',
-            r'const\s+config\s*=\s*({.*?});',
-        ]
-
-        for json_pattern in json_patterns:
-            json_match = re.search(json_pattern, html, re.DOTALL)
-            if json_match:
-                try:
-                    config = json.loads(json_match.group(1))
-                    for key in ['url', 'video', 'src', 'm3u8', 'playUrl', 'play_url', 'videoUrl', 'video_url']:
-                        if key in config and isinstance(config[key], str):
-                            url = config[key].replace('\\/', '/')
-                            if url.startswith('//'):
-                                url = 'https:' + url
-                            elif url.startswith('/'):
-                                url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
-                            if '.m3u8' in url.lower() and self.is_valid_url(url):
-                                return url
-                except:
-                    pass
-
-        # 4. 从 player 函数调用中提取
-        player_match = re.search(r'player\s*\(\s*{(.*?)}\s*\)', html, re.DOTALL)
-        if player_match:
-            url_match = re.search(r'url\s*:\s*["\']([^"\']+)["\']', player_match.group(1))
-            if url_match:
-                url = url_match.group(1).replace('\\/', '/')
-                if url.startswith('//'):
-                    url = 'https:' + url
-                elif url.startswith('/'):
-                    url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
-                if '.m3u8' in url.lower() and self.is_valid_url(url):
-                    return url
-
-        # 5. 从 CKPlayer 配置中提取
-        ck_match = re.search(r'video\s*:\s*["\']([^"\']+)["\']', html)
-        if ck_match:
-            url = ck_match.group(1).replace('\\/', '/')
-            if url.startswith('//'):
-                url = 'https:' + url
-            elif url.startswith('/'):
-                url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
-            if '.m3u8' in url.lower() and self.is_valid_url(url):
-                return url
-
-        # 6. 从 eval 或 decodeURIComponent 编码的内容中提取
-        encoded_match = re.search(r'decodeURIComponent\(["\']([^"\']+)["\']\)', html)
-        if encoded_match:
-            try:
-                decoded = unquote(encoded_match.group(1))
-                m3u8_match = re.search(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', decoded, re.IGNORECASE)
-                if m3u8_match:
-                    return m3u8_match.group(0)
-            except:
-                pass
-
-        # 7. 尝试直接从页面中查找所有URL，筛选m3u8
-        all_urls = re.findall(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', html, re.IGNORECASE)
-        for url in all_urls:
-            if self.is_valid_url(url):
-                return url
-
-        return None
-
-    def _extract_m3u8_with_playwright(self, url):
-        """
-        使用 Playwright 渲染页面后提取 m3u8 地址
-        处理 JavaScript 动态加载视频地址的情况
-
-        Args:
-            url (str): 页面URL
-
-        Returns:
-            str: 提取到的m3u8地址，失败返回None
-        """
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError:
-            print("Playwright 未安装，跳过 Playwright 提取方式")
-            return None
-
-        try:
-            with sync_playwright() as p:
-                browser = None
-                for channel in ['chrome', 'msedge', None]:
-                    try:
-                        if channel:
-                            browser = p.chromium.launch(headless=True, channel=channel)
-                        else:
-                            browser = p.chromium.launch(headless=True)
-                        break
-                    except Exception:
-                        continue
-
-                if not browser:
-                    print("无法启动浏览器")
-                    return None
-
-                context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    extra_http_headers={
-                        'Referer': url
-                    }
-                )
-
-                page = context.new_page()
-
-                m3u8_urls = []
-
-                def handle_request(request):
-                    req_url = request.url
-                    if '.m3u8' in req_url.lower():
-                        m3u8_urls.append(req_url)
-                        print(f"捕获到 m3u8 请求: {req_url[:100]}...")
-
-                def handle_response(response):
-                    resp_url = response.url
-                    if '.m3u8' in resp_url.lower():
-                        if resp_url not in m3u8_urls:
-                            m3u8_urls.append(resp_url)
-                            print(f"捕获到 m3u8 响应: {resp_url[:100]}...")
-
-                page.on('request', handle_request)
-                page.on('response', handle_response)
-
-                try:
-                    page.goto(url, wait_until="networkidle", timeout=30000)
-                except Exception:
-                    try:
-                        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    except Exception:
-                        pass
-
-                # 等待JS执行和网络请求
-                for _ in range(8):
-                    if m3u8_urls:
-                        break
-                    page.wait_for_timeout(1000)
-
-                # 检查是否捕获到了 m3u8 地址
-                for m3u8_url in m3u8_urls:
-                    if self.is_valid_url(m3u8_url):
-                        browser.close()
-                        return m3u8_url
-
-                # 如果网络请求没捕获到，再从页面内容中提取
-                try:
-                    html = page.content()
-                    result = self._extract_m3u8_from_html_simple(html, url)
-                    if result:
-                        browser.close()
-                        return result
-                except Exception:
-                    pass
-
-                browser.close()
-                return None
-
-        except Exception as e:
-            print(f"Playwright 提取 m3u8 失败: {str(e)}")
-            return None
-
-    def _extract_m3u8_from_html_simple(self, html, base_url):
-        """
-        简单版的HTML提取，只做正则匹配，不递归处理iframe（避免循环调用）
-        """
-        parsed_base = urlparse(base_url)
-
-        # 搜索所有m3u8 URL
-        all_urls = re.findall(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', html, re.IGNORECASE)
-        for url in all_urls:
-            if self.is_valid_url(url):
-                return url
-
-        # 从各种 script 变量中提取
-        patterns = [
-            r'["\']([^"\']+\.m3u8[^"\']*)["\']',
-            r'url["\']?\s*[:=]\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
-            r'"url"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-            r'"video"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-            r'"src"\s*:\s*"([^"]+\.m3u8[^"]*)"',
-            r'"m3u8"\s*:\s*"([^"]+)"',
-        ]
-
-        for pattern in patterns:
-            matches = re.findall(pattern, html, re.IGNORECASE)
-            for match in matches:
-                url = match
-                url = url.replace('\\/', '/').replace('\\', '')
-                if url.startswith('//'):
-                    url = 'https:' + url
-                elif url.startswith('/'):
-                    url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
-                if '.m3u8' in url.lower() and self.is_valid_url(url):
-                    return url
-
-        return None
-
-    def _merge_ts_files(self, ts_files, output_path):
-        """
-        合并多个 ts 文件为一个 MP4 文件
-
-        Args:
-            ts_files (list): ts 文件路径列表
-            output_path (str): 输出目录
-
-        Returns:
-            dict: 合并结果
-        """
-        if not ts_files:
-            return {
-                'success': False,
-                'message': '没有需要合并的 ts 文件',
-                'data': None
-            }
-
-        # 排序 ts 文件
-        ts_files.sort()
-
-        # 创建临时文件列表
-        list_file = os.path.join(output_path, 'ts_list.txt')
-        with open(list_file, 'w', encoding='utf-8') as f:
-            for ts_file in ts_files:
-                f.write(f"file '{os.path.basename(ts_file)}'\n")
-
-        # 输出文件名
-        output_file = os.path.join(output_path, 'video_download.mp4')
-
-        # 使用 ffmpeg 合并
-        ffmpeg_path = self._get_ffmpeg_path()
-        if not ffmpeg_path:
-            return {
-                'success': False,
-                'message': 'ffmpeg 不可用',
-                'data': None
-            }
-
-        cmd = [
-            ffmpeg_path,
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', list_file,
-            '-c', 'copy',
-            '-bsf:a', 'aac_adtstoasc',
-            '-y',
-            output_file
-        ]
-
-        try:
-            print(f"合并 ts 文件: {' '.join(cmd)}")
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=output_path,
-                timeout=300
-            )
-
-            if result.returncode == 0:
-                # 清理临时文件
-                try:
-                    os.remove(list_file)
-                    for ts_file in ts_files:
-                        os.remove(ts_file)
-                except:
-                    pass
-
-                return {
-                    'success': True,
-                    'message': f'合并成功，输出文件: {output_file}',
-                    'data': {
-                        'output_file': output_file
-                    }
-                }
-            else:
-                return {
-                    'success': False,
-                    'message': f'合并失败: {result.stderr[:200]}',
-                    'data': None
-                }
-        except Exception as e:
-            return {
-                'success': False,
-                'message': f'合并异常: {str(e)}',
-                'data': None
-            }
-
-    def _get_ffmpeg_path(self):
-        """
-        获取 ffmpeg 可执行文件路径
-        优先级：1. imageio-ffmpeg 内置；2. 程序目录的 ffmpeg.exe；3. libs目录；4. 系统 PATH；5. 自动下载
-
-        Returns:
-            str: ffmpeg 可执行文件的完整路径，None 表示不可用
-        """
-        if self._ffmpeg_path:
-            return self._ffmpeg_path
-
-        # 1. 优先使用 imageio-ffmpeg 内置的 ffmpeg（最简单，无需额外下载）
-        try:
-            print("尝试使用 imageio-ffmpeg...")
-            import imageio_ffmpeg
-            imageio_ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-            print(f"imageio-ffmpeg 返回路径: {imageio_ffmpeg_path}")
-            if imageio_ffmpeg_path and os.path.exists(imageio_ffmpeg_path):
-                self._ffmpeg_path = imageio_ffmpeg_path
-                print(f"✓ 找到 imageio-ffmpeg 内置的 ffmpeg: {imageio_ffmpeg_path}")
-                return self._ffmpeg_path
-            else:
-                print(f"✗ imageio-ffmpeg 路径不存在: {imageio_ffmpeg_path}")
-        except Exception as e:
-            print(f"✗ imageio-ffmpeg 导入或调用失败: {type(e).__name__}: {e}")
-
-        # 2. 检查程序目录（开发环境或打包后）
-        program_dir = self._get_program_dir()
-        local_ffmpeg = os.path.join(program_dir, 'ffmpeg.exe')
-        if os.path.exists(local_ffmpeg):
-            self._ffmpeg_path = local_ffmpeg
-            return self._ffmpeg_path
-
-        # 3. 打包后的 libs 目录
-        libs_ffmpeg = os.path.join(program_dir, 'libs', 'ffmpeg.exe')
-        if os.path.exists(libs_ffmpeg):
-            self._ffmpeg_path = libs_ffmpeg
-            return self._ffmpeg_path
-
-        # 4. 检查系统 PATH
-        import shutil
-        system_ffmpeg = shutil.which('ffmpeg')
-        if system_ffmpeg:
-            self._ffmpeg_path = system_ffmpeg
-            return self._ffmpeg_path
-
-        # 5. 尝试自动下载
-        print("⚠️  所有查找方式都失败了，正在尝试自动下载 ffmpeg（约 83MB，可能需要几分钟）...")
-        print("💡 提示：如果下载太慢，可以手动下载 ffmpeg 并放到程序目录")
-        downloaded_path = self._download_ffmpeg()
-        if downloaded_path:
-            self._ffmpeg_path = downloaded_path
-            return self._ffmpeg_path
-
-        return None
 
     def _get_program_dir(self):
         """获取程序目录"""
@@ -680,7 +172,8 @@ class VideoParser:
                         downloaded += len(chunk)
                         if total_size > 0:
                             progress = int(50 * downloaded / total_size)
-                            print(f"\r下载进度: [{('#' * progress).ljust(50)}] {int(100 * downloaded / total_size)}%", end='', flush=True)
+                            print(f"\r下载进度: [{('#' * progress).ljust(50)}] {int(100 * downloaded / total_size)}%",
+                                  end='', flush=True)
 
             print("\n下载完成，正在解压...")
 
@@ -743,7 +236,6 @@ class VideoParser:
     def _get_ffmpeg_executable(self):
         """获取 ffmpeg 可执行文件路径（供外部调用）"""
         return self._get_ffmpeg_path()
-
 
     def download_video(self, video_url, output_path=None, quality='best', original_url=None):
         """
@@ -907,7 +399,8 @@ class VideoParser:
             '--fragment-retries', '10',
             '--no-check-certificate',
             '--no-playlist',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--user-agent',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--referer', referer_url,
             '--add-header', f'Referer: {referer_url}',
         ]
@@ -984,7 +477,8 @@ class VideoParser:
 
             cmd = [
                 ffmpeg_path,
-                '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                '-user_agent',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             ]
 
             if referer_url:
@@ -1088,7 +582,7 @@ class VideoParser:
 
     # ==================== 批量下载功能 ====================
 
-    def batch_download(self, start_url, output_path, quality='best', api_key='a', 
+    def batch_download(self, start_url, output_path, quality='best', api_key='a',
                        max_episodes=None, progress_callback=None, max_workers=3):
         """
         批量下载电视剧所有剧集（支持多线程并发下载）
@@ -1107,12 +601,12 @@ class VideoParser:
         """
         if not output_path:
             output_path = os.getcwd()
-        
+
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
         platform = self.detect_platform(start_url)
-        
+
         if platform not in ['腾讯视频', '爱奇艺']:
             return {
                 'success': False,
@@ -1130,7 +624,7 @@ class VideoParser:
             }
 
         episodes = list_result['data']['episodes']
-        
+
         if not episodes:
             return {
                 'success': False,
@@ -1151,7 +645,7 @@ class VideoParser:
             """下载单集，返回结果字典"""
             ep_num = ep.get('episode_num', 0)
             ep_url = ep.get('url', '')
-            
+
             if not ep_url:
                 return {'success': False, 'episode': ep_num, 'reason': '无有效链接'}
 
@@ -1165,8 +659,8 @@ class VideoParser:
 
                 # 下载视频
                 download_result = self.download_video(
-                    parsed_url, 
-                    output_path=output_path, 
+                    parsed_url,
+                    output_path=output_path,
                     quality=quality,
                     original_url=ep_url
                 )
@@ -1192,19 +686,19 @@ class VideoParser:
                 result = future.result()
                 completed_count += 1
                 ep_num = result['episode']
-                
+
                 if result['success']:
                     downloaded.append({'episode': ep_num, 'url': futures[future].get('url', '')})
                     if progress_callback:
                         progress_callback(
-                            completed_count, total, 'success', 
+                            completed_count, total, 'success',
                             f'第{ep_num}集下载成功 ({completed_count}/{total})'
                         )
                 else:
                     failed.append({'episode': ep_num, 'reason': result['reason']})
                     if progress_callback:
                         progress_callback(
-                            completed_count, total, 'failed', 
+                            completed_count, total, 'failed',
                             f'第{ep_num}集下载失败: {result["reason"]} ({completed_count}/{total})'
                         )
 
@@ -1228,7 +722,7 @@ class VideoParser:
         根据当前视频URL自动获取下一集URL
         """
         platform = self.detect_platform(current_url)
-        
+
         if platform == '腾讯视频':
             return self._get_qq_next_episode(current_url)
         elif platform == '爱奇艺':
@@ -1323,17 +817,17 @@ class VideoParser:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Referer': 'https://www.iqiyi.com/'
             }
-            
+
             response = requests.get(current_url, headers=headers, timeout=15)
             response.encoding = 'utf-8'
             html = response.text
-            
+
             album_id_match = re.search(r'albumId["\']?\s*[:=]\s*["\']?(\d+)["\']?', html)
             album_id = album_id_match.group(1) if album_id_match else None
-            
+
             tv_id_match = re.search(r'tvId["\']?\s*[:=]\s*["\']?(\d+)["\']?', html)
             tv_id = tv_id_match.group(1) if tv_id_match else None
-            
+
             current_ep_match = re.search(r'(第\s*(\d+)\s*集|EP(\d+)|episode["\']?\s*[:=]\s*["\']?(\d+))', html)
             current_ep = None
             if current_ep_match:
@@ -1341,7 +835,7 @@ class VideoParser:
                     if g and g.isdigit():
                         current_ep = int(g)
                         break
-            
+
             if not album_id:
                 album_match = re.search(r'href=["\'](https?://www\.iqiyi\.com/a_[^"\']+)["\']', html)
                 if album_match:
@@ -1349,15 +843,15 @@ class VideoParser:
                     album_id_match2 = re.search(r'a_(\w+)\.html', album_url)
                     if album_id_match2:
                         album_id = album_id_match2.group(1)
-            
+
             episodes = []
-            
+
             if album_id and album_id.isdigit():
                 try:
                     api_url = f'https://pcw-api.iqiyi.com/albums/album/avlistinfo?aid={album_id}&page=1&size=50'
                     api_response = requests.get(api_url, headers=headers, timeout=10)
                     api_data = api_response.json()
-                    
+
                     if api_data.get('data') and api_data['data'].get('epsodelist'):
                         for ep in api_data['data']['epsodelist']:
                             episodes.append({
@@ -1368,25 +862,28 @@ class VideoParser:
                             })
                 except Exception as e:
                     print(f"爱奇艺API请求失败: {e}")
-            
+
             if not episodes:
-                ep_links = re.findall(r'href=["\'](https?://www\.iqiyi\.com/v_\w+\.html)["\'][^>]*>\s*(?:<[^>]+>)*\s*(\d+)\s*(?:<[^>]+>)*\s*</a>', html)
+                ep_links = re.findall(
+                    r'href=["\'](https?://www\.iqiyi\.com/v_\w+\.html)["\'][^>]*>\s*(?:<[^>]+>)*\s*(\d+)\s*(?:<[^>]+>)*\s*</a>',
+                    html)
                 for url, num in ep_links:
                     episodes.append({
                         'url': url,
                         'episode_num': int(num),
                         'tv_id': ''
                     })
-                
+
                 if not episodes:
-                    ep_data = re.findall(r'data-episode=["\'](\d+)["\'][^>]*href=["\'](https?://www\.iqiyi\.com/v_\w+\.html)["\']', html)
+                    ep_data = re.findall(
+                        r'data-episode=["\'](\d+)["\'][^>]*href=["\'](https?://www\.iqiyi\.com/v_\w+\.html)["\']', html)
                     for num, url in ep_data:
                         episodes.append({
                             'url': url,
                             'episode_num': int(num),
                             'tv_id': ''
                         })
-            
+
             seen_urls = set()
             unique_episodes = []
             for ep in episodes:
@@ -1394,9 +891,9 @@ class VideoParser:
                 if url_key and url_key not in seen_urls:
                     seen_urls.add(url_key)
                     unique_episodes.append(ep)
-            
+
             unique_episodes.sort(key=lambda x: x['episode_num'])
-            
+
             current_index = -1
             for i, ep in enumerate(unique_episodes):
                 ep_url = ep.get('url', '')
@@ -1404,7 +901,7 @@ class VideoParser:
                 if current_url in ep_url or ep_tv_id == tv_id or ep['episode_num'] == current_ep:
                     current_index = i
                     break
-            
+
             if current_index == -1:
                 vid_match = re.search(r'v_(\w+)\.html', current_url)
                 if vid_match:
@@ -1414,14 +911,14 @@ class VideoParser:
                         if current_vid in ep_url:
                             current_index = i
                             break
-            
+
             if current_index >= 0 and current_index + 1 < len(unique_episodes):
                 next_ep = unique_episodes[current_index + 1]
                 next_url = next_ep.get('url', '')
-                
+
                 if not next_url and next_ep.get('tv_id'):
                     next_url = f'https://www.iqiyi.com/v_{next_ep["tv_id"]}.html'
-                
+
                 return {
                     'success': True,
                     'message': f'找到下一集：第{next_ep["episode_num"]}集',
@@ -1434,7 +931,7 @@ class VideoParser:
                         'platform': '爱奇艺'
                     }
                 }
-            
+
             return {
                 'success': False,
                 'message': '未找到下一集，可能当前已是最后一集或页面结构已变更',
@@ -1444,7 +941,7 @@ class VideoParser:
                     'platform': '爱奇艺'
                 }
             }
-            
+
         except Exception as e:
             return {
                 'success': False,
@@ -1457,7 +954,7 @@ class VideoParser:
         获取视频的所有剧集列表
         """
         platform = self.detect_platform(video_url)
-        
+
         if platform == '腾讯视频':
             return self._get_qq_episode_list(video_url)
         elif platform == '爱奇艺':
@@ -1634,21 +1131,21 @@ class VideoParser:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-            
+
             response = requests.get(video_url, headers=headers, timeout=15)
             html = response.text
-            
+
             album_id_match = re.search(r'albumId["\']?\s*[:=]\s*["\']?(\d+)["\']?', html)
             album_id = album_id_match.group(1) if album_id_match else None
-            
+
             episodes = []
-            
+
             if album_id and album_id.isdigit():
                 try:
                     api_url = f'https://pcw-api.iqiyi.com/albums/album/avlistinfo?aid={album_id}&page=1&size=50'
                     api_response = requests.get(api_url, headers=headers, timeout=10)
                     api_data = api_response.json()
-                    
+
                     if api_data.get('data') and api_data['data'].get('epsodelist'):
                         for ep in api_data['data']['epsodelist']:
                             episodes.append({
@@ -1659,7 +1156,7 @@ class VideoParser:
                             })
                 except:
                     pass
-            
+
             return {
                 'success': True,
                 'message': f'共找到 {len(episodes)} 集',
@@ -1669,7 +1166,7 @@ class VideoParser:
                     'platform': '爱奇艺'
                 }
             }
-            
+
         except Exception as e:
             return {'success': False, 'message': str(e), 'data': None}
 

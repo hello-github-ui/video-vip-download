@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QComboBox, QLabel, QTextEdit,
     QGroupBox, QGridLayout, QProgressBar, QMessageBox,
-    QFileDialog, QSpinBox, QTabWidget, QSplitter, QCheckBox
+    QFileDialog, QSpinBox, QTabWidget
 )
 
 from video_parser import VideoParser
@@ -32,6 +32,7 @@ def get_system_font(size=12):
     按优先级尝试不同平台的中文字体
     """
     font_families = [
+        'Arial',
         'Noto Sans CJK SC',
         'Noto Sans CJK TC',
         'Microsoft YaHei',
@@ -40,8 +41,7 @@ def get_system_font(size=12):
         'Heiti SC',
         'SimHei',
         'WenQuanYi Micro Hei',
-        'Arial Unicode MS',
-        'Arial'
+        'Arial Unicode MS'
     ]
 
     font = QFont()
@@ -80,76 +80,6 @@ class DownloadThread(QThread):
         self.finished.emit(result)
 
 
-class BatchDownloadThread(QThread):
-    """
-    批量下载线程
-    用于在后台执行批量下载任务
-    """
-    progress = pyqtSignal(int, int, str, str)  # completed, total, status, message
-    finished = pyqtSignal(dict)
-
-    def __init__(self, start_url, output_path, quality, api_key='a', max_episodes=None, max_workers=3):
-        super().__init__()
-        self.start_url = start_url
-        self.output_path = output_path
-        self.quality = quality
-        self.api_key = api_key
-        self.max_episodes = max_episodes
-        self.max_workers = max_workers
-        self.parser = VideoParser()
-
-    def run(self):
-        """执行批量下载任务"""
-
-        def progress_callback(completed, total, status, message):
-            self.progress.emit(completed, total, status, message)
-
-        result = self.parser.batch_download(
-            self.start_url,
-            self.output_path,
-            self.quality,
-            self.api_key,
-            self.max_episodes,
-            progress_callback,
-            self.max_workers
-        )
-        self.finished.emit(result)
-
-
-class EpisodeListThread(QThread):
-    """
-    获取剧集列表线程
-    """
-    progress = pyqtSignal(str)
-    finished = pyqtSignal(dict)
-
-    def __init__(self, video_url):
-        super().__init__()
-        self.video_url = video_url
-        self.parser = VideoParser()
-
-    def run(self):
-        self.progress.emit("正在获取剧集列表，请稍候...")
-        result = self.parser.get_episode_list(self.video_url)
-        self.finished.emit(result)
-
-
-class NextEpisodeThread(QThread):
-    """
-    获取下一集线程
-    """
-    finished = pyqtSignal(dict)
-
-    def __init__(self, current_url):
-        super().__init__()
-        self.current_url = current_url
-        self.parser = VideoParser()
-
-    def run(self):
-        result = self.parser.get_next_episode(self.current_url)
-        self.finished.emit(result)
-
-
 class MainWindow(QMainWindow):
     """
     主窗口类
@@ -178,11 +108,16 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
 
+        # 注意下面几行代码的书写顺序会影响gui的界面构建效果
         self.create_url_input()
         self.create_api_selector()
         self.create_action_buttons()
         self.create_tab_widget()
-        self.create_batch_download_section()
+        self.result_text.append("解析结果将显示在这里...")
+        self.result_text.append(f"欢迎使用VIP 视频解析工具")
+        # 注意：此时 self.parser.parse_apis 已经初始化过了
+        self.result_text.append(f"已加载默认解析接口: {self.parser.parse_apis[0].get('name')} ✅ (推荐使用)")
+        # self.create_batch_download_section()
         self.create_quick_links()
         self.create_download_section()
         self.create_status_bar()
@@ -195,8 +130,9 @@ class MainWindow(QMainWindow):
         url_layout = QHBoxLayout(url_group)
         url_layout.setSpacing(10)
 
-        platforms = ['自动检测', '腾讯视频', '优酷', '哔哩哔哩', '爱奇艺', '芒果TV', '搜狐视频', 'PP视频', '乐视视频', '土豆视频', 'AcFun']
-        
+        platforms = ['自动检测', '腾讯视频', '优酷', '哔哩哔哩', '爱奇艺', '芒果TV', '搜狐视频', 'PP视频', '乐视视频',
+                     '土豆视频', 'AcFun']
+
         self.platform_combo = QComboBox()
         self.platform_combo.setFont(get_system_font(12))
         for p in platforms:
@@ -219,16 +155,19 @@ class MainWindow(QMainWindow):
         api_group = QGroupBox('解析线路')
         api_layout = QHBoxLayout(api_group)
 
+        # QComboBox Qt部件，用于显示和选择下拉框列表中的项，提供了一组选项供用户选择，并且允许用户输入自定义的项
         self.api_combo = QComboBox()
         self.api_combo.setFont(get_system_font(12))
 
-        apis = self.parser.get_all_apis()
-        for key, api in apis.items():
+        apis = self.parser.parse_apis
+        for api in apis:
             status = ' ✅' if api['status'] == 'active' else ' ❌'
             note = f" ({api['note']})" if api['note'] else ''
-            self.api_combo.addItem(f"{key}. {api['name']}{status}{note}", key)
-
-        self.api_combo.setCurrentText('a. 万能稳定解析 ✅ (推荐使用)')
+            self.api_combo.addItem(f"{api['name']}. {api['name']}{status}{note}", api)
+        current_default_choice_text = f"{apis[0].get('name')} ✅ (推荐使用)"
+        # current_default_choice_text: 万能稳定解析
+        print(f"current_default_choice_text: {current_default_choice_text}")
+        self.api_combo.setCurrentText(current_default_choice_text)
 
         api_layout.addWidget(QLabel('选择解析线路:'))
         api_layout.addWidget(self.api_combo)
@@ -243,27 +182,27 @@ class MainWindow(QMainWindow):
         self.parse_btn.setFont(get_system_font(12))
         self.parse_btn.clicked.connect(self.on_parse_click)
 
-        self.episode_list_btn = QPushButton('获取全部剧集')
-        self.episode_list_btn.setFont(get_system_font(12))
-        self.episode_list_btn.clicked.connect(self.on_episode_list_click)
-        self.episode_list_btn.setEnabled(False)
-        self.episode_list_btn.setToolTip('获取当前视频的全部剧集列表（支持腾讯、爱奇艺）')
+        # self.episode_list_btn = QPushButton('获取全部剧集')
+        # self.episode_list_btn.setFont(get_system_font(12))
+        # self.episode_list_btn.clicked.connect(self.on_episode_list_click)
+        # self.episode_list_btn.setEnabled(False)
+        # self.episode_list_btn.setToolTip('获取当前视频的全部剧集列表（支持腾讯、爱奇艺）')
 
         self.open_btn = QPushButton('在浏览器打开')
         self.open_btn.setFont(get_system_font(12))
         self.open_btn.clicked.connect(self.on_open_browser)
         self.open_btn.setEnabled(False)
 
-        self.copy_btn = QPushButton('复制链接')
-        self.copy_btn.setFont(get_system_font(12))
-        self.copy_btn.clicked.connect(self.copy_to_clipboard)
-        self.copy_btn.setEnabled(False)
+        # self.copy_btn = QPushButton('复制链接')
+        # self.copy_btn.setFont(get_system_font(12))
+        # self.copy_btn.clicked.connect(self.copy_to_clipboard)
+        # self.copy_btn.setEnabled(False)
 
-        self.next_btn = QPushButton('下一集')
-        self.next_btn.setFont(get_system_font(12))
-        self.next_btn.clicked.connect(self.on_next_episode)
-        self.next_btn.setEnabled(False)
-        self.next_btn.setToolTip('自动获取并解析下一集（支持腾讯、爱奇艺）')
+        # self.next_btn = QPushButton('下一集')
+        # self.next_btn.setFont(get_system_font(12))
+        # self.next_btn.clicked.connect(self.on_next_episode)
+        # self.next_btn.setEnabled(False)
+        # self.next_btn.setToolTip('自动获取并解析下一集（支持腾讯、爱奇艺）')
 
         # self.play_btn = QPushButton('在浏览器播放')
         # self.play_btn.setFont(get_system_font(12))
@@ -272,10 +211,10 @@ class MainWindow(QMainWindow):
         # self.play_btn.setToolTip('在浏览器中播放解析后的视频')
 
         btn_layout.addWidget(self.parse_btn)
-        btn_layout.addWidget(self.episode_list_btn)
+        # btn_layout.addWidget(self.episode_list_btn)
         btn_layout.addWidget(self.open_btn)
-        btn_layout.addWidget(self.copy_btn)
-        btn_layout.addWidget(self.next_btn)
+        # btn_layout.addWidget(self.copy_btn)
+        # btn_layout.addWidget(self.next_btn)
         # btn_layout.addWidget(self.play_btn)
 
         self.main_layout.addLayout(btn_layout)
@@ -294,73 +233,73 @@ class MainWindow(QMainWindow):
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
         self.result_text.setFont(get_system_font(11))
-        self.result_text.setPlaceholderText('解析结果将显示在这里...')
+        # self.result_text.setPlaceholderText('解析结果将显示在这里...')
         result_layout.addWidget(self.result_text)
 
         self.tab_widget.addTab(result_tab, '解析结果')
 
         self.main_layout.addWidget(self.tab_widget, stretch=1)
 
-    def create_batch_download_section(self):
-        """创建批量下载区域"""
-        batch_group = QGroupBox('批量下载电视剧（支持腾讯、爱奇艺）')
-        batch_layout = QVBoxLayout(batch_group)
-
-        # 保存目录选择
-        dir_layout = QHBoxLayout()
-        self.output_path_label = QLabel('保存目录:')
-        self.output_path_input = QLineEdit()
-        self.output_path_input.setPlaceholderText('点击右侧按钮选择保存目录...')
-        self.output_path_input.setReadOnly(True)
-        self.select_dir_btn = QPushButton('选择目录')
-        self.select_dir_btn.clicked.connect(self.on_select_directory)
-
-        dir_layout.addWidget(self.output_path_label)
-        dir_layout.addWidget(self.output_path_input)
-        dir_layout.addWidget(self.select_dir_btn)
-        batch_layout.addLayout(dir_layout)
-
-        # 下载选项
-        options_layout = QHBoxLayout()
-
-        self.max_episodes_spin = QSpinBox()
-        self.max_episodes_spin.setRange(0, 100)
-        self.max_episodes_spin.setValue(0)
-        self.max_episodes_spin.setSpecialValueText('全部')
-        self.max_episodes_spin.setPrefix('下载集数: ')
-        self.max_episodes_spin.setSuffix(' 集')
-        self.max_episodes_spin.setToolTip('0表示下载全部剧集')
-
-        self.thread_spin = QSpinBox()
-        self.thread_spin.setRange(1, 10)
-        self.thread_spin.setValue(3)
-        self.thread_spin.setPrefix('并发数: ')
-        self.thread_spin.setSuffix(' 线程')
-        self.thread_spin.setToolTip('同时下载的剧集数量，建议2-5个')
-
-        self.batch_quality_combo = QComboBox()
-        self.batch_quality_combo.addItems(['best - 最佳画质', '1080p', '720p', '480p', '360p'])
-        self.batch_quality_combo.setFont(get_system_font(11))
-
-        self.batch_download_btn = QPushButton('批量下载全部剧集')
-        self.batch_download_btn.setFont(get_system_font(12))
-        self.batch_download_btn.clicked.connect(self.on_batch_download_click)
-        self.batch_download_btn.setEnabled(False)
-
-        options_layout.addWidget(self.max_episodes_spin)
-        options_layout.addWidget(self.thread_spin)
-        options_layout.addWidget(QLabel('画质:'))
-        options_layout.addWidget(self.batch_quality_combo)
-        options_layout.addWidget(self.batch_download_btn)
-
-        batch_layout.addLayout(options_layout)
-
-        # 批量下载进度条
-        self.batch_progress_bar = QProgressBar()
-        self.batch_progress_bar.setVisible(False)
-        batch_layout.addWidget(self.batch_progress_bar)
-
-        self.main_layout.addWidget(batch_group)
+    # def create_batch_download_section(self):
+    #     """创建批量下载区域"""
+    #     batch_group = QGroupBox('批量下载电视剧（支持腾讯、爱奇艺）')
+    #     batch_layout = QVBoxLayout(batch_group)
+    #
+    #     # 保存目录选择
+    #     dir_layout = QHBoxLayout()
+    #     self.output_path_label = QLabel('保存目录:')
+    #     self.output_path_input = QLineEdit()
+    #     self.output_path_input.setPlaceholderText('点击右侧按钮选择保存目录...')
+    #     self.output_path_input.setReadOnly(True)
+    #     self.select_dir_btn = QPushButton('选择目录')
+    #     self.select_dir_btn.clicked.connect(self.on_select_directory)
+    #
+    #     dir_layout.addWidget(self.output_path_label)
+    #     dir_layout.addWidget(self.output_path_input)
+    #     dir_layout.addWidget(self.select_dir_btn)
+    #     batch_layout.addLayout(dir_layout)
+    #
+    #     # 下载选项
+    #     options_layout = QHBoxLayout()
+    #
+    #     self.max_episodes_spin = QSpinBox()
+    #     self.max_episodes_spin.setRange(0, 100)
+    #     self.max_episodes_spin.setValue(0)
+    #     self.max_episodes_spin.setSpecialValueText('全部')
+    #     self.max_episodes_spin.setPrefix('下载集数: ')
+    #     self.max_episodes_spin.setSuffix(' 集')
+    #     self.max_episodes_spin.setToolTip('0表示下载全部剧集')
+    #
+    #     self.thread_spin = QSpinBox()
+    #     self.thread_spin.setRange(1, 10)
+    #     self.thread_spin.setValue(3)
+    #     self.thread_spin.setPrefix('并发数: ')
+    #     self.thread_spin.setSuffix(' 线程')
+    #     self.thread_spin.setToolTip('同时下载的剧集数量，建议2-5个')
+    #
+    #     self.batch_quality_combo = QComboBox()
+    #     self.batch_quality_combo.addItems(['best - 最佳画质', '1080p', '720p', '480p', '360p'])
+    #     self.batch_quality_combo.setFont(get_system_font(11))
+    #
+    #     self.batch_download_btn = QPushButton('批量下载全部剧集')
+    #     self.batch_download_btn.setFont(get_system_font(12))
+    #     self.batch_download_btn.clicked.connect(self.on_batch_download_click)
+    #     self.batch_download_btn.setEnabled(False)
+    #
+    #     options_layout.addWidget(self.max_episodes_spin)
+    #     options_layout.addWidget(self.thread_spin)
+    #     options_layout.addWidget(QLabel('画质:'))
+    #     options_layout.addWidget(self.batch_quality_combo)
+    #     options_layout.addWidget(self.batch_download_btn)
+    #
+    #     batch_layout.addLayout(options_layout)
+    #
+    #     # 批量下载进度条
+    #     self.batch_progress_bar = QProgressBar()
+    #     self.batch_progress_bar.setVisible(False)
+    #     batch_layout.addWidget(self.batch_progress_bar)
+    #
+    #     self.main_layout.addWidget(batch_group)
 
     def create_quick_links(self):
         """创建快速访问按钮"""
@@ -418,20 +357,20 @@ class MainWindow(QMainWindow):
         status_bar.setFixedHeight(25)
         status_layout = QHBoxLayout(status_bar)
         status_layout.setContentsMargins(10, 0, 10, 0)
-        
+
         self.author_label = QLabel('© 作者: QiYue')
         self.author_label.setFont(get_system_font(10))
         self.author_label.setStyleSheet('color: #888888;')
-        
+
         self.version_label = QLabel('v1.0.0')
         self.version_label.setFont(get_system_font(10))
         self.version_label.setStyleSheet('color: #888888;')
         self.version_label.setAlignment(Qt.AlignRight)
-        
+
         status_layout.addWidget(self.author_label)
         status_layout.addStretch()
         status_layout.addWidget(self.version_label)
-        
+
         self.main_layout.addWidget(status_bar)
 
     def get_style_sheet(self):
@@ -592,21 +531,21 @@ class MainWindow(QMainWindow):
             }
         """
 
-    def paste_from_clipboard(self):
-        """从剪贴板粘贴内容"""
-        clipboard = QApplication.clipboard()
-        text = clipboard.text()
-        if text:
-            self.url_input.setText(text)
+    # def paste_from_clipboard(self):
+    #     """从剪贴板粘贴内容"""
+    #     clipboard = QApplication.clipboard()
+    #     text = clipboard.text()
+    #     if text:
+    #         self.url_input.setText(text)
 
-    def copy_to_clipboard(self):
-        """复制链接到剪贴板"""
-        clipboard = QApplication.clipboard()
-        clipboard.setText(self.parsed_url)
-        # 该种提示框，需要手动关闭
-        # QMessageBox.information(self, '提示', '链接已复制到剪贴板！')
-        # 使用自动关闭的提示框，2秒后自动关闭
-        self.show_auto_close_info('提示', '链接已复制到剪贴板！')
+    # def copy_to_clipboard(self):
+    #     """复制链接到剪贴板"""
+    #     clipboard = QApplication.clipboard()
+    #     clipboard.setText(self.parsed_url)
+    #     # 该种提示框，需要手动关闭
+    #     # QMessageBox.information(self, '提示', '链接已复制到剪贴板！')
+    #     # 使用自动关闭的提示框，2秒后自动关闭
+    #     self.show_auto_close_info('提示', '链接已复制到剪贴板！')
 
     def on_select_directory(self):
         """选择下载保存目录"""
@@ -628,22 +567,25 @@ class MainWindow(QMainWindow):
             return
 
         api_key = self.api_combo.currentData()
+        # api_key: {'name': '万能稳定解析', 'note': '推荐使用', 'status': 'active', 'url': 'https://jx.m3u8.tv/jiexi/?url='}
+        print(f"api_key: {api_key}")
 
         self.result_text.clear()
         self.result_text.append(f"正在解析: {video_url}")
-        self.result_text.append(f"使用线路: {self.api_combo.currentText().split(' ')[0]}")
+        self.result_text.append(f"使用线路: {self.api_combo.currentText().split(' ')[1]}")
 
         result = self.parser.parse_url(video_url, api_key)
 
         if result['success']:
             self.parsed_url = result['data']['parsed_url']
             self.original_url = video_url
-            
+
             selected_platform = self.platform_combo.currentText()
             if selected_platform == '自动检测':
                 platform = self.parser.detect_platform(video_url)
                 # 自动选中检测到的平台
-                platforms = ['自动检测', '腾讯视频', '优酷', '哔哩哔哩', '爱奇艺', '芒果TV', '搜狐视频', 'PP视频', '乐视视频', '土豆视频', 'AcFun']
+                platforms = ['自动检测', '腾讯视频', '优酷', '哔哩哔哩', '爱奇艺', '芒果TV', '搜狐视频', 'PP视频',
+                             '乐视视频', '土豆视频', 'AcFun']
                 if platform in platforms:
                     self.platform_combo.setCurrentText(platform)
             else:
@@ -651,27 +593,28 @@ class MainWindow(QMainWindow):
 
             self.result_text.append("\n解析成功！")
             self.result_text.append(f"视频平台: {platform}")
-            self.result_text.append(f"解析链接: {self.parsed_url}")
+            self.result_text.append(f"原始视频链接: {self.original_url}")
+            self.result_text.append(f"解析后的链接: {self.parsed_url}")
 
             self.open_btn.setEnabled(True)
-            self.copy_btn.setEnabled(True)
-            self.download_btn.setEnabled(True)
-            if platform in ['腾讯视频', '爱奇艺']:
-                self.next_btn.setEnabled(True)
-                self.batch_download_btn.setEnabled(True)
-                self.episode_list_btn.setEnabled(True)
-            else:
-                self.next_btn.setEnabled(False)
-                self.batch_download_btn.setEnabled(False)
-                self.episode_list_btn.setEnabled(False)
+            # self.copy_btn.setEnabled(True)
+            # self.download_btn.setEnabled(True)
+            # if platform in ['腾讯视频', '爱奇艺']:
+                # self.next_btn.setEnabled(True)
+                # self.batch_download_btn.setEnabled(True)
+                # self.episode_list_btn.setEnabled(True)
+            # else:
+                # self.next_btn.setEnabled(False)
+                # self.batch_download_btn.setEnabled(False)
+                # self.episode_list_btn.setEnabled(False)
         else:
             self.result_text.append(f"\n解析失败: {result['message']}")
             self.open_btn.setEnabled(False)
-            self.copy_btn.setEnabled(False)
-            self.download_btn.setEnabled(False)
-            self.next_btn.setEnabled(False)
-            self.batch_download_btn.setEnabled(False)
-            self.episode_list_btn.setEnabled(False)
+            # self.copy_btn.setEnabled(False)
+            # self.download_btn.setEnabled(False)
+            # self.next_btn.setEnabled(False)
+            # self.batch_download_btn.setEnabled(False)
+            # self.episode_list_btn.setEnabled(False)
 
     def show_auto_close_info(self, title, message, timeout=2000):
         """
@@ -698,7 +641,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'parsed_url'):
             if self.parser.open_in_browser(self.parsed_url):
                 # 使用自动关闭的提示框，2秒后自动关闭
-                self.show_auto_close_info('提示', '浏览器已打开！')
+                # self.show_auto_close_info('提示', '浏览器已打开！')
+                print(f"浏览器已打开,链接为: {self.parsed_url}")
+                self.result_text.append(f"浏览器已打开,链接为: {self.parsed_url}")
             else:
                 QMessageBox.warning(self, '警告', '打开浏览器失败，请手动复制链接！')
 
@@ -711,51 +656,16 @@ class MainWindow(QMainWindow):
         self.on_open_browser()
 
     def on_download_click(self):
-        """处理下载按钮点击 - 打开本地Web下载页面"""
+        """默认使用 yt-dlp 实现下载"""
         if not hasattr(self, 'parsed_url'):
             QMessageBox.warning(self, '警告', '请先解析视频链接！')
             return
-
-        parsed_url = self.parsed_url
-        original_url = getattr(self, 'original_url', '')
-
-        print(f"正在打开下载页面...")
-
-        def open_download_page():
-            try:
-                import web_server
-                import threading
-                import urllib.parse
-
-                port = 8080
-                download_url = f"http://localhost:{port}/download?url={urllib.parse.quote(parsed_url)}&original={urllib.parse.quote(original_url)}"
-
-                server_thread = threading.Thread(target=web_server.app.run, kwargs={'host': '127.0.0.1', 'port': port, 'debug': False})
-                server_thread.daemon = True
-                server_thread.start()
-
-                import time
-                time.sleep(1)
-
-                import webbrowser
-                webbrowser.open(download_url)
-
-            except Exception as e:
-                print(f"打开下载页面失败: {str(e)}")
-                import traceback
-                traceback.print_exc()
-
-        import threading
-        t = threading.Thread(target=open_download_page)
-        t.daemon = True
-        t.start()
-
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle('提示')
-        msg_box.setText('已打开浏览器下载页面，请在页面中点击下载按钮')
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.show()
-        QTimer.singleShot(5000, msg_box.accept)
+        # TODO 注意：需要先下载 aria2c
+        # TODO 注意：这里需要支持用户选择下载文件夹
+        import time
+        ts = int(time.time() * 1000)  # 毫秒时间戳（当前）
+        download_cmd=f'yt-dlp --external-downloader aria2c --external-downloader-args "-x 8 -s 8 -k 1M" --concurrent-fragments 4 "{self.original_url}" -o "{ts}.mp4"'
+        # TODO 执行下载命令？
 
     def on_download_finished(self, result):
         """下载完成处理"""
@@ -767,72 +677,72 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, '失败', result['message'])
 
-    def on_batch_download_click(self):
-        """处理批量下载按钮点击"""
-        video_url = self.url_input.text().strip()
-        if not video_url:
-            QMessageBox.warning(self, '警告', '请输入视频链接！')
-            return
-
-        # 检查保存目录
-        output_path = self.output_path_input.text().strip()
-        if not output_path:
-            output_path = QFileDialog.getExistingDirectory(
-                self,
-                '选择下载保存目录',
-                os.path.expanduser('~/Downloads'),
-                QFileDialog.ShowDirsOnly
-            )
-            if not output_path:
-                QMessageBox.warning(self, '警告', '请选择下载保存目录！')
-                return
-            self.output_path_input.setText(output_path)
-
-        platform = self.parser.detect_platform(video_url)
-        if platform not in ['腾讯视频', '爱奇艺']:
-            QMessageBox.warning(self, '警告', f'暂不支持{platform}的批量下载')
-            return
-
-        # 获取下载集数限制
-        max_episodes = self.max_episodes_spin.value()
-        if max_episodes == 0:
-            max_episodes = None
-
-        quality = self.batch_quality_combo.currentText().split(' ')[0]
-        api_key = self.api_combo.currentData()
-        max_workers = self.thread_spin.value()
-
-        # 确认对话框
-        reply = QMessageBox.question(
-            self,
-            '批量下载确认',
-            f'即将开始批量下载，保存目录: {output_path}\n'
-            f'下载集数: {max_episodes if max_episodes else "全部"}\n'
-            f'并发数: {max_workers} 线程\n'
-            f'画质: {quality}\n'
-            f'是否继续？',
-            QMessageBox.Yes | QMessageBox.No
-        )
-
-        if reply != QMessageBox.Yes:
-            return
-
-        self.result_text.append(f"\n开始批量下载电视剧...")
-        self.result_text.append(f"保存目录: {output_path}")
-        self.result_text.append(f"画质: {quality}")
-        self.result_text.append(f"并发数: {max_workers} 线程")
-
-        self.batch_download_btn.setEnabled(False)
-        self.batch_progress_bar.setVisible(True)
-        self.batch_progress_bar.setRange(0, 100)
-        self.batch_progress_bar.setValue(0)
-
-        self.batch_thread = BatchDownloadThread(
-            video_url, output_path, quality, api_key, max_episodes, max_workers
-        )
-        self.batch_thread.progress.connect(self.on_batch_progress)
-        self.batch_thread.finished.connect(self.on_batch_finished)
-        self.batch_thread.start()
+    # def on_batch_download_click(self):
+    #     """处理批量下载按钮点击"""
+    #     video_url = self.url_input.text().strip()
+    #     if not video_url:
+    #         QMessageBox.warning(self, '警告', '请输入视频链接！')
+    #         return
+    #
+    #     # 检查保存目录
+    #     output_path = self.output_path_input.text().strip()
+    #     if not output_path:
+    #         output_path = QFileDialog.getExistingDirectory(
+    #             self,
+    #             '选择下载保存目录',
+    #             os.path.expanduser('~/Downloads'),
+    #             QFileDialog.ShowDirsOnly
+    #         )
+    #         if not output_path:
+    #             QMessageBox.warning(self, '警告', '请选择下载保存目录！')
+    #             return
+    #         self.output_path_input.setText(output_path)
+    #
+    #     platform = self.parser.detect_platform(video_url)
+    #     if platform not in ['腾讯视频', '爱奇艺']:
+    #         QMessageBox.warning(self, '警告', f'暂不支持{platform}的批量下载')
+    #         return
+    #
+    #     # 获取下载集数限制
+    #     max_episodes = self.max_episodes_spin.value()
+    #     if max_episodes == 0:
+    #         max_episodes = None
+    #
+    #     quality = self.batch_quality_combo.currentText().split(' ')[0]
+    #     api_key = self.api_combo.currentData()
+    #     max_workers = self.thread_spin.value()
+    #
+    #     # 确认对话框
+    #     reply = QMessageBox.question(
+    #         self,
+    #         '批量下载确认',
+    #         f'即将开始批量下载，保存目录: {output_path}\n'
+    #         f'下载集数: {max_episodes if max_episodes else "全部"}\n'
+    #         f'并发数: {max_workers} 线程\n'
+    #         f'画质: {quality}\n'
+    #         f'是否继续？',
+    #         QMessageBox.Yes | QMessageBox.No
+    #     )
+    #
+    #     if reply != QMessageBox.Yes:
+    #         return
+    #
+    #     self.result_text.append(f"\n开始批量下载电视剧...")
+    #     self.result_text.append(f"保存目录: {output_path}")
+    #     self.result_text.append(f"画质: {quality}")
+    #     self.result_text.append(f"并发数: {max_workers} 线程")
+    #
+    #     self.batch_download_btn.setEnabled(False)
+    #     self.batch_progress_bar.setVisible(True)
+    #     self.batch_progress_bar.setRange(0, 100)
+    #     self.batch_progress_bar.setValue(0)
+    #
+    #     self.batch_thread = BatchDownloadThread(
+    #         video_url, output_path, quality, api_key, max_episodes, max_workers
+    #     )
+    #     self.batch_thread.progress.connect(self.on_batch_progress)
+    #     self.batch_thread.finished.connect(self.on_batch_finished)
+    #     self.batch_thread.start()
 
     def on_batch_progress(self, completed, total, status, message):
         """批量下载进度更新"""
@@ -863,27 +773,27 @@ class MainWindow(QMainWindow):
         """打开视频平台"""
         self.parser.open_in_browser(url)
 
-    def on_episode_list_click(self):
-        """处理获取全部剧集按钮点击"""
-        if not hasattr(self, 'original_url'):
-            QMessageBox.warning(self, '警告', '请先解析视频链接！')
-            return
-
-        video_url = self.original_url
-        platform = self.parser.detect_platform(video_url)
-
-        if platform not in ['腾讯视频', '爱奇艺']:
-            QMessageBox.warning(self, '警告', f'暂不支持{platform}的获取剧集列表功能')
-            return
-
-        self.result_text.append(f"\n正在获取全部剧集列表...")
-        self.result_text.append(f"请稍候，这可能需要几秒钟...")
-        self.episode_list_btn.setEnabled(False)
-
-        self.episode_list_thread = EpisodeListThread(video_url)
-        self.episode_list_thread.progress.connect(self.on_episode_list_progress)
-        self.episode_list_thread.finished.connect(self.on_episode_list_finished)
-        self.episode_list_thread.start()
+    # def on_episode_list_click(self):
+    #     """处理获取全部剧集按钮点击"""
+    #     if not hasattr(self, 'original_url'):
+    #         QMessageBox.warning(self, '警告', '请先解析视频链接！')
+    #         return
+    #
+    #     video_url = self.original_url
+    #     platform = self.parser.detect_platform(video_url)
+    #
+    #     if platform not in ['腾讯视频', '爱奇艺']:
+    #         QMessageBox.warning(self, '警告', f'暂不支持{platform}的获取剧集列表功能')
+    #         return
+    #
+    #     self.result_text.append(f"\n正在获取全部剧集列表...")
+    #     self.result_text.append(f"请稍候，这可能需要几秒钟...")
+    #     self.episode_list_btn.setEnabled(False)
+    #
+    #     self.episode_list_thread = EpisodeListThread(video_url)
+    #     self.episode_list_thread.progress.connect(self.on_episode_list_progress)
+    #     self.episode_list_thread.finished.connect(self.on_episode_list_finished)
+    #     self.episode_list_thread.start()
 
     def on_episode_list_progress(self, message):
         """获取剧集列表进度"""
@@ -898,17 +808,17 @@ class MainWindow(QMainWindow):
             episodes = data['episodes']
             total = data['total']
 
-            self.result_text.append(f"\n{'='*60}")
+            self.result_text.append(f"\n{'=' * 60}")
             self.result_text.append(f"📺 平台: {data['platform']}")
             self.result_text.append(f"✅ 共找到 {total} 集")
-            self.result_text.append(f"{'='*60}")
+            self.result_text.append(f"{'=' * 60}")
             self.result_text.append(f"{'集数':<8} {'链接'}")
-            self.result_text.append(f"{'-'*60}")
+            self.result_text.append(f"{'-' * 60}")
 
             for ep in episodes:
                 self.result_text.append(f"第{ep['episode_num']:<4}集  {ep['url']}")
 
-            self.result_text.append(f"{'='*60}")
+            self.result_text.append(f"{'=' * 60}")
             self.result_text.append(f"\n提示：可以通过\"批量下载\"功能下载全部剧集")
 
             QMessageBox.information(
@@ -920,49 +830,49 @@ class MainWindow(QMainWindow):
             self.result_text.append(f"\n❌ 获取剧集列表失败: {result['message']}")
             QMessageBox.warning(self, '获取失败', result['message'])
 
-    def on_next_episode(self):
-        """处理下一集按钮点击"""
-        if not hasattr(self, 'original_url'):
-            QMessageBox.warning(self, '警告', '请先解析视频链接！')
-            return
+    # def on_next_episode(self):
+    #     """处理下一集按钮点击"""
+    #     if not hasattr(self, 'original_url'):
+    #         QMessageBox.warning(self, '警告', '请先解析视频链接！')
+    #         return
+    #
+    #     current_url = self.original_url
+    #     platform = self.parser.detect_platform(current_url)
+    #
+    #     if platform not in ['腾讯视频', '爱奇艺']:
+    #         QMessageBox.warning(self, '警告', f'暂不支持{platform}的自动获取下一集功能')
+    #         return
+    #
+    #     self.result_text.append(f"\n正在获取下一集...")
+    #     self.next_btn.setEnabled(False)
+    #
+    #     self.next_thread = NextEpisodeThread(current_url)
+    #     self.next_thread.finished.connect(self.on_next_episode_finished)
+    #     self.next_thread.start()
 
-        current_url = self.original_url
-        platform = self.parser.detect_platform(current_url)
-
-        if platform not in ['腾讯视频', '爱奇艺']:
-            QMessageBox.warning(self, '警告', f'暂不支持{platform}的自动获取下一集功能')
-            return
-
-        self.result_text.append(f"\n正在获取下一集...")
-        self.next_btn.setEnabled(False)
-
-        self.next_thread = NextEpisodeThread(current_url)
-        self.next_thread.finished.connect(self.on_next_episode_finished)
-        self.next_thread.start()
-
-    def on_next_episode_finished(self, result):
-        """下一集获取完成处理"""
-        self.next_btn.setEnabled(True)
-
-        if result['success']:
-            next_url = result['data']['next_url']
-            episode_num = result['data']['episode_num']
-
-            self.result_text.append(f"找到下一集：第{episode_num}集")
-
-            reply = QMessageBox.question(
-                self,
-                '下一集',
-                f'已找到第{episode_num}集，是否自动解析？',
-                QMessageBox.Yes | QMessageBox.No
-            )
-
-            if reply == QMessageBox.Yes:
-                self.url_input.setText(next_url)
-                self.on_parse_click()
-        else:
-            self.result_text.append(f"{result['message']}")
-            QMessageBox.warning(self, '获取下一集失败', result['message'])
+    # def on_next_episode_finished(self, result):
+    #     """下一集获取完成处理"""
+    #     self.next_btn.setEnabled(True)
+    #
+    #     if result['success']:
+    #         next_url = result['data']['next_url']
+    #         episode_num = result['data']['episode_num']
+    #
+    #         self.result_text.append(f"找到下一集：第{episode_num}集")
+    #
+    #         reply = QMessageBox.question(
+    #             self,
+    #             '下一集',
+    #             f'已找到第{episode_num}集，是否自动解析？',
+    #             QMessageBox.Yes | QMessageBox.No
+    #         )
+    #
+    #         if reply == QMessageBox.Yes:
+    #             self.url_input.setText(next_url)
+    #             self.on_parse_click()
+    #     else:
+    #         self.result_text.append(f"{result['message']}")
+    #         QMessageBox.warning(self, '获取下一集失败', result['message'])
 
 
 def get_icon_path():
