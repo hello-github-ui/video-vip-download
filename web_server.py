@@ -30,6 +30,14 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/download')
+def download_page():
+    """下载页面 - 集成视频播放和下载功能"""
+    video_url = request.args.get('url', '')
+    original_url = request.args.get('original', '')
+    return render_template('download.html', video_url=video_url, original_url=original_url)
+
+
 @app.route('/api/parse', methods=['POST'])
 def api_parse():
     """

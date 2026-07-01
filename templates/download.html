@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频下载 - VIP 视频解析工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 1.5em;
+        }
+        .download-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .download-btn:hover {
+            background: #ff6b7a;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(255, 71, 87, 0.4);
+        }
+        .download-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .video-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        .video-wrapper {
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 16 / 9;
+            position: relative;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .status-bar {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        .status-box {
+            background: white;
+            border-radius: 8px;
+            padding: 16px 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        .status-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .progress-container {
+            background: #e0e0e0;
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+            margin-top: 10px;
+            display: none;
+        }
+        .progress-bar {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            color: #666;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        .tip {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-top: 15px;
+            color: #856404;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>视频下载</h1>
+        <button id="downloadBtn" class="download-btn" onclick="startDownload()">下载视频</button>
+    </div>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <video id="videoPlayer" controls autoplay></video>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-box">
+            <div class="status-title" id="statusTitle">准备就绪</div>
+            <div id="statusText" class="progress-text">点击右上角"下载视频"按钮开始下载</div>
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="tip">
+                <strong>提示：</strong>视频播放正常后再点击下载，下载的是 .ts 格式文件，可用系统播放器直接播放。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoUrl = {{ video_url|tojson }};
+        const originalUrl = {{ original_url|tojson }};
+
+        const video = document.getElementById('videoPlayer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusTitle = document.getElementById('statusTitle');
+        const statusText = document.getElementById('statusText');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+
+        if (Hls.isSupported()) {
+            const hls = new Hls();
+            hls.loadSource(videoUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                video.play().catch(() => {});
+            });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = videoUrl;
+            video.addEventListener('loadedmetadata', function() {
+                video.play().catch(() => {});
+            });
+        }
+
+        async function startDownload() {
+            downloadBtn.disabled = true;
+            downloadBtn.textContent = '下载中...';
+            statusTitle.textContent = '正在下载';
+            progressContainer.style.display = 'block';
+
+            try {
+                const response = await fetch(videoUrl);
+                if (!response.ok) throw new Error('获取视频失败: ' + response.status);
+                
+                const text = await response.text();
+                const lines = text.split('\n');
+                const tsUrls = [];
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (line && !line.startsWith('#')) {
+                        let tsUrl = line;
+                        if (!tsUrl.startsWith('http')) {
+                            if (tsUrl.startsWith('//')) {
+                                tsUrl = 'https:' + tsUrl;
+                            } else if (tsUrl.startsWith('/')) {
+                                const parsed = new URL(videoUrl);
+                                tsUrl = parsed.protocol + '//' + parsed.host + tsUrl;
+                            } else {
+                                const base = videoUrl.substring(0, videoUrl.lastIndexOf('/') + 1);
+                                tsUrl = base + tsUrl;
+                            }
+                        }
+                        tsUrls.push(tsUrl);
+                    }
+                }
+
+                statusText.textContent = `找到 ${tsUrls.length} 个片段，开始下载...`;
+
+                const downloaded = [];
+                for (let i = 0; i < tsUrls.length; i++) {
+                    const progress = Math.round(((i + 1) / tsUrls.length) * 100);
+                    progressBar.style.width = progress + '%';
+                    statusText.textContent = `下载中: ${i + 1}/${tsUrls.length} (${progress}%)`;
+
+                    try {
+                        const tsResp = await fetch(tsUrls[i]);
+                        const buf = await tsResp.arrayBuffer();
+                        downloaded.push(new Uint8Array(buf));
+                    } catch (e) {
+                        console.log('片段下载失败:', i, e);
+                    }
+                }
+
+                statusText.textContent = '正在合并视频...';
+
+                let totalLen = 0;
+                for (let i = 0; i < downloaded.length; i++) {
+                    totalLen += downloaded[i].length;
+                }
+
+                const merged = new Uint8Array(totalLen);
+                let offset = 0;
+                for (let i = 0; i < downloaded.length; i++) {
+                    merged.set(downloaded[i], offset);
+                    offset += downloaded[i].length;
+                }
+
+                const blob = new Blob([merged], { type: 'video/mp2t' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'video_' + Date.now() + '.ts';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                statusTitle.textContent = '下载完成';
+                statusText.textContent = `下载完成！共 ${downloaded.length} 个片段`;
+                downloadBtn.textContent = '重新下载';
+                downloadBtn.disabled = false;
+
+            } catch (e) {
+                statusTitle.textContent = '下载失败';
+                statusText.textContent = '下载失败: ' + e.message;
+                downloadBtn.textContent = '下载视频';
+                downloadBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

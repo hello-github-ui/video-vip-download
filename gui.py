@@ -711,26 +711,48 @@ class MainWindow(QMainWindow):
         self.on_open_browser()
 
     def on_download_click(self):
-        """处理下载按钮点击 - 在浏览器中打开并注入下载按钮"""
+        """处理下载按钮点击 - 打开本地Web下载页面"""
         if not hasattr(self, 'parsed_url'):
             QMessageBox.warning(self, '警告', '请先解析视频链接！')
             return
 
         parsed_url = self.parsed_url
+        original_url = getattr(self, 'original_url', '')
 
-        print(f"正在打开浏览器并注入下载按钮...")
+        print(f"正在打开下载页面...")
 
-        def open_browser():
-            self.parser.open_in_browser(parsed_url, inject_download=True)
+        def open_download_page():
+            try:
+                import web_server
+                import threading
+                import urllib.parse
+
+                port = 8080
+                download_url = f"http://localhost:{port}/download?url={urllib.parse.quote(parsed_url)}&original={urllib.parse.quote(original_url)}"
+
+                server_thread = threading.Thread(target=web_server.app.run, kwargs={'host': '127.0.0.1', 'port': port, 'debug': False})
+                server_thread.daemon = True
+                server_thread.start()
+
+                import time
+                time.sleep(1)
+
+                import webbrowser
+                webbrowser.open(download_url)
+
+            except Exception as e:
+                print(f"打开下载页面失败: {str(e)}")
+                import traceback
+                traceback.print_exc()
 
         import threading
-        t = threading.Thread(target=open_browser)
+        t = threading.Thread(target=open_download_page)
         t.daemon = True
         t.start()
 
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle('提示')
-        msg_box.setText('已打开浏览器，请点击页面右上角的"下载视频"按钮下载视频')
+        msg_box.setText('已打开浏览器下载页面，请在页面中点击下载按钮')
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.show()
         QTimer.singleShot(5000, msg_box.accept)
