@@ -1,7 +1,61 @@
 {
-    "version": "20260701",
-    "update_time": "2026-07-01",
+    "version": "20260702",
+    "update_time": "2026-07-02",
     "apis": [
+        {
+            "name": "七七云解析",
+            "note": "推荐使用",
+            "status": "active",
+            "url": "https://jx.77flv.cc/?url="
+        },
+        {
+            "name": "M1907",
+            "note": "推荐使用",
+            "status": "active",
+            "url": "https://im1907.top/?jx="
+        },
+        {
+            "name": "CK解析",
+            "note": "待检测",
+            "status": "active",
+            "url": "https://www.ckplayer.vip/jiexi/?url="
+        },
+        {
+            "name": "虾米解析",
+            "note": "",
+            "status": "active",
+            "url": "https://jx.hls.one/?url="
+        },
+        {
+            "name": "极速解析",
+            "note": "",
+            "status": "active",
+            "url": "https://jx.2s0.cn/player/?url="
+        },
+        {
+            "name": "剖元解析",
+            "note": "",
+            "status": "active",
+            "url": "https://www.pouyun.com/?url="
+        },
+        {
+            "name": "playm3u8",
+            "note": "",
+            "status": "active",
+            "url": "https://www.playm3u8.cn/jiexi.php?url="
+        },
+        {
+            "name": "芒果TV1",
+            "note": "20260702可用",
+            "status": "active",
+            "url": "https://video.isyour.love/player/getplayer?url="
+        },
+        {
+            "name": "Yparse",
+            "note": "",
+            "status": "active",
+            "url": "https://jx.yparse.com/index.php?url="
+        },
         {
             "name": "全民解析",
             "url": "http://nidecms.com/www/jiexi289dff07669d7a23de0ef88d2f7129e7.php?url=",

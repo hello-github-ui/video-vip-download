@@ -9,7 +9,7 @@
 import json
 
 
-def parse_apis(file_path=r"apis/20260701-api.json"):
+def parse_apis(file_path=r"apis/20260702-api.json"):
     with open(file_path, "r", encoding="utf-8") as f:
         obj = json.load(f)
         if isinstance(obj, list):

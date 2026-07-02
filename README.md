@@ -240,6 +240,14 @@ pyinstaller --clean --noconfirm --onefile --windowed \
 | macOS   | `dist/VIP-Video-Parser-macOS-xxx.app/`      |
 | Linux   | `dist/VIP-Video-Parser-Linux`               |
 
+## 演示
+
+![image-20260702144244921](assets/image-20260702144244921.png)
+
+![image-20260702144343349](assets/image-20260702144343349.png)
+
+![image-20260702165702791](assets/image-20260702165702791.png)
+
 ## 许可证
 
 GNU General Public License v3.0
