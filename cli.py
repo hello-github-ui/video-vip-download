@@ -260,7 +260,10 @@ class CLI:
             int: 退出码
         """
         print(f"\n🔍 正在解析视频: {video_url}")
-        print(f"📡 使用解析线路: {self.parser.parse_apis[api_key]['name']}")
+        # 转换字符串索引为列表索引
+        api_index = ord(api_key.lower()) - ord('a')
+        api_name = self.parser.parse_apis[api_index]['name'] if 0 <= api_index < len(self.parser.parse_apis) else api_key
+        print(f"📡 使用解析线路: {api_name}")
 
         result = self.parser.parse_url(video_url, api_key)
 

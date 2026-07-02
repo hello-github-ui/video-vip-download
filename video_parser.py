@@ -50,8 +50,24 @@ class VideoParser:
         }
 
     def get_active_apis(self):
-        """获取可用的解析接口"""
-        return {key: api for key, api in self.parse_apis.items() if api['status'] == 'active'}
+        """获取可用的解析接口，以字典形式返回"""
+        result = {}
+        for i, api in enumerate(self.parse_apis):
+            if api['status'] == 'active':
+                key = chr(ord('a') + i)
+                result[key] = api
+        return result
+
+    def get_all_apis(self):
+        """
+        获取所有解析接口，以字典形式返回（'a', 'b', 'c' -> 列表元素）
+        兼容 CLI 的字典访问方式
+        """
+        result = {}
+        for i, api in enumerate(self.parse_apis):
+            key = chr(ord('a') + i)
+            result[key] = api
+        return result
 
     def is_valid_url(self, url):
         """
@@ -76,6 +92,12 @@ class VideoParser:
     def parse_url(self, video_url, api):
         """
         根据选择的解析线路生成解析链接
+        
+        Args:
+            video_url (str): 视频链接
+            api: 解析线路，可以是:
+                - 字符串索引: 'a', 'b', 'c' 等（对应列表第0,1,2...个）
+                - 完整的 api dict（来自 parse_apis 列表的元素）
         """
         if not self.is_valid_url(video_url):
             return {
@@ -84,14 +106,26 @@ class VideoParser:
                 'data': None
             }
 
-        if api not in self.parse_apis:
+        # 如果 api 是字符串索引（如 'a', 'b', 'c'），转换为列表索引
+        if isinstance(api, str) and len(api) == 1:
+            api_index = ord(api.lower()) - ord('a')
+            if 0 <= api_index < len(self.parse_apis):
+                api_info = self.parse_apis[api_index]
+            else:
+                return {
+                    'success': False,
+                    'message': '无效的解析线路选择',
+                    'data': None
+                }
+        # 如果 api 是完整的 dict，直接使用
+        elif isinstance(api, dict):
+            api_info = api
+        else:
             return {
                 'success': False,
                 'message': '无效的解析线路选择',
                 'data': None
             }
-
-        api_info = api
 
         if api_info['status'] == 'deprecated':
             return {
