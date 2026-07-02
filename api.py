@@ -15,6 +15,8 @@ def parse_apis(file_path=r"apis/20260701-api.json"):
         if isinstance(obj, list):
             return obj
         if isinstance(obj, dict):
+            if 'apis' in obj:
+                return obj['apis']
             return [obj]
         raise TypeError(f"JSON根节点类型不支持： {type(obj)}")
 
