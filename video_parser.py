@@ -27,11 +27,12 @@ class VideoParser:
 
     def __init__(self):
         """初始化解析器，定义支持的解析线路"""
-        self._ffmpeg_path = None
-        self._m3u8_url = None
-        self._context = None
-        self._page = None
-        self._playwright = None
+        # 以下属性暂不使用，已注释
+        # self._ffmpeg_path = None
+        # self._m3u8_url = None
+        # self._context = None
+        # self._page = None
+        # self._playwright = None
         # 获取最新可用的api解析接口
         self.parse_apis = parse_apis()
 
@@ -133,6 +134,8 @@ class VideoParser:
             # 开发环境
             return os.path.dirname(os.path.abspath(__file__))
 
+    # ==================== ffmpeg 相关功能（暂不使用，已注释） ====================
+    '''
     def _download_ffmpeg(self):
         """
         自动下载 ffmpeg 到程序目录
@@ -236,24 +239,36 @@ class VideoParser:
     def _get_ffmpeg_executable(self):
         """获取 ffmpeg 可执行文件路径（供外部调用）"""
         return self._get_ffmpeg_path()
+    '''
 
     def download_video(self, video_url, output_path=None, quality='best', original_url=None):
         """
-        使用yt-dlp下载视频
+        使用 yt-dlp 下载视频（直接下载原始视频URL）
 
         Args:
-            video_url (str): 视频链接（可以是原始视频链接或解析后的链接）
+            video_url (str): 视频链接（原始视频链接）
             output_path (str): 输出目录，默认为当前目录
             quality (str): 视频质量
-            original_url (str): 原始视频链接（用于错误提示等）
+            original_url (str): 原始视频链接（保留参数，兼容调用）
 
         Returns:
             dict: 下载结果
+            
+        日志输出说明：
+            所有 print 输出都会被全局 LogStream 拦截（在 gui.py 中设置），
+            用户勾选"显示详细日志"后会显示在 GUI 的解析结果文本框中。
+            这里直接用 print 输出即可，不需要额外的回调机制。
         """
-        if not self.is_valid_url(video_url):
+        # 优先使用 original_url（原始视频链接，如腾讯视频页面URL）
+        # 因为 yt-dlp 直接支持各大视频平台的原始链接解析
+        actual_url = original_url if original_url else video_url
+
+        if not self.is_valid_url(actual_url):
+            msg = '无效的视频链接'
+            print(msg)
             return {
                 'success': False,
-                'message': '无效的视频链接',
+                'message': msg,
                 'data': None
             }
 
@@ -263,121 +278,71 @@ class VideoParser:
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
-        # 判断是否是解析接口链接
-        is_api_url = any(api['url'].split('?')[0] in video_url for api in self.parse_apis.values())
+        print(f"\n开始下载: {actual_url}")
+        print(f"保存目录: {output_path}")
+        print(f"画质: {quality}")
 
-        actual_url = video_url
-        referer_url = video_url
+        # 构建 yt-dlp 命令，直接下载原始视频URL
+        cmd = self._build_yt_dlp_cmd(actual_url, output_path, quality, actual_url)
 
-        # 如果是解析接口链接，尝试提取真实视频地址
-        if is_api_url:
-            print(f"检测到解析接口链接，正在提取真实视频地址...")
-            extracted_url = self._extract_m3u8_from_api(video_url)
-            if extracted_url:
-                actual_url = extracted_url
-                referer_url = video_url
-                print(f"提取到真实地址: {actual_url}")
+        try:
+            print(f"执行命令: {' '.join(cmd)}")
+
+            # 使用 Popen 实时读取输出
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=output_path,
+                bufsize=1,
+                universal_newlines=True
+            )
+
+            output_lines = []
+            for line in process.stdout:
+                line = line.rstrip('\n\r')
+                output_lines.append(line)
+                print(line)
+
+            process.wait()
+            returncode = process.returncode
+
+            if returncode == 0:
+                return {
+                    'success': True,
+                    'message': '视频下载成功（yt-dlp）',
+                    'data': {
+                        'output_path': output_path,
+                        'stdout': '\n'.join(output_lines)
+                    }
+                }
             else:
+                error_msg = '\n'.join(output_lines[-20:]) if output_lines else '未知错误'
+                print(f"下载失败: {error_msg[:500]}")
                 return {
                     'success': False,
-                    'message': '无法从解析接口提取真实视频地址，请尝试直接复制解析链接到浏览器播放',
+                    'message': f'下载失败: {error_msg[:500]}',
                     'data': None
                 }
-
-        is_m3u8 = '.m3u8' in actual_url.lower()
-        ffmpeg_available = self._check_ffmpeg_available()
-
-        # 尝试多种下载策略
-        strategies = []
-
-        if is_m3u8:
-            # 策略1: yt-dlp 原生 HLS 下载（不需要ffmpeg）
-            strategies.append(('yt-dlp原生HLS', self._build_yt_dlp_cmd(
-                actual_url, output_path, quality, referer_url,
-                use_native_hls=True, use_ffmpeg_downloader=False
-            )))
-
-            # 策略2: yt-dlp + ffmpeg 下载器（如果ffmpeg可用）
-            if ffmpeg_available:
-                strategies.append(('yt-dlp+ffmpeg', self._build_yt_dlp_cmd(
-                    actual_url, output_path, quality, referer_url,
-                    use_native_hls=False, use_ffmpeg_downloader=True
-                )))
-
-            # 策略3: 直接用 ffmpeg 下载（如果ffmpeg可用）
-            if ffmpeg_available:
-                strategies.append(('ffmpeg直连', None))  # None 表示特殊处理
-        else:
-            # 非m3u8链接，直接用yt-dlp
-            strategies.append(('yt-dlp', self._build_yt_dlp_cmd(
-                actual_url, output_path, quality, referer_url,
-                use_native_hls=False, use_ffmpeg_downloader=ffmpeg_available
-            )))
-
-        last_error = ''
-        for strategy_name, cmd in strategies:
-            print(f"\n尝试下载策略: {strategy_name}")
-
-            if strategy_name == 'ffmpeg直连':
-                # 直接用 ffmpeg 下载
-                result = self._download_with_ffmpeg(actual_url, output_path, referer_url)
-                if result['success']:
-                    return result
-                last_error = result['message']
-                continue
-
-            if cmd is None:
-                continue
-
-            try:
-                print(f"执行命令: {' '.join(cmd)}")
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    cwd=output_path,
-                    timeout=3600
-                )
-
-                if result.returncode == 0:
-                    return {
-                        'success': True,
-                        'message': f'视频下载成功（{strategy_name}）',
-                        'data': {
-                            'output_path': output_path,
-                            'stdout': result.stdout
-                        }
-                    }
-                else:
-                    error_msg = result.stderr if result.stderr else result.stdout
-                    last_error = error_msg
-                    print(f"{strategy_name} 失败: {error_msg[:200]}...")
-            except FileNotFoundError:
-                last_error = '未找到yt-dlp，请确保已安装'
-                break
-            except subprocess.TimeoutExpired:
-                last_error = '下载超时'
-                continue
-            except Exception as e:
-                last_error = f'下载过程发生错误: {str(e)}'
-                continue
-
-        # 所有策略都失败了
-        if not ffmpeg_available and is_m3u8:
+        except FileNotFoundError:
+            msg = '未找到 yt-dlp，请确保已安装（pip install yt-dlp）'
+            print(msg)
             return {
                 'success': False,
-                'message': f'下载失败。检测到是m3u8格式，当前未安装ffmpeg，建议安装ffmpeg以提高下载成功率。\n\n错误详情: {last_error[:500]}',
+                'message': msg,
+                'data': None
+            }
+        except Exception as e:
+            msg = f'下载过程发生错误: {str(e)}'
+            print(msg)
+            return {
+                'success': False,
+                'message': msg,
                 'data': None
             }
 
-        return {
-            'success': False,
-            'message': f'下载失败: {last_error}',
-            'data': None
-        }
-
-    def _build_yt_dlp_cmd(self, actual_url, output_path, quality, referer_url,
-                          use_native_hls=False, use_ffmpeg_downloader=False):
+    def _build_yt_dlp_cmd(self, actual_url, output_path, quality, referer_url):
         """构建 yt-dlp 命令"""
         quality_map = {
             'best': 'best',
@@ -402,29 +367,14 @@ class VideoParser:
             '--user-agent',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--referer', referer_url,
-            '--add-header', f'Referer: {referer_url}',
+            actual_url
         ]
 
-        is_m3u8 = '.m3u8' in actual_url.lower()
-        if is_m3u8:
-            if use_ffmpeg_downloader:
-                cmd.extend([
-                    '--downloader', 'ffmpeg',
-                    '--hls-use-mpegts',
-                ])
-            elif use_native_hls:
-                cmd.extend([
-                    '--hls-prefer-native',
-                    '--concurrent-fragments', '5',
-                ])
-            else:
-                cmd.extend([
-                    '--concurrent-fragments', '5',
-                ])
-
-        cmd.append(actual_url)
         return cmd
 
+    # ==================== 以下功能暂不使用，已注释 ====================
+    # 包含: ffmpeg下载、m3u8路径修复、批量下载、获取下一集、剧集列表等
+    '''
     def _download_with_ffmpeg(self, m3u8_url, output_path, referer_url=None):
         """
         使用 ffmpeg 下载 m3u8 视频
@@ -1169,6 +1119,7 @@ class VideoParser:
 
         except Exception as e:
             return {'success': False, 'message': str(e), 'data': None}
+    '''
 
     def check_api_status(self, api_key):
         """检查解析接口状态"""

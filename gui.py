@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QComboBox, QLabel, QTextEdit,
     QGroupBox, QGridLayout, QProgressBar, QMessageBox,
-    QFileDialog, QSpinBox, QTabWidget
+    QFileDialog, QSpinBox, QTabWidget, QCheckBox
 )
 
 from video_parser import VideoParser
@@ -24,6 +24,109 @@ try:
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
 except AttributeError:
     pass  # 非 Windows 平台跳过
+
+
+# =====================================================================
+# 全局日志拦截系统（类似 Java AOP 的切面拦截思想）
+# =====================================================================
+# 原理说明：
+#   在 Python 中，所有的 print() 函数本质上是向 sys.stdout 这个"标准输出流"写入内容。
+#   sys.stdout 默认指向的是控制台（终端/命令行）。
+#
+#   如果我们把 sys.stdout 替换成一个我们自己写的"假的输出流对象"，
+#   那么所有 print() 调用就都会写入我们这个对象，
+#   我们就可以在里面做任何想做的事情（比如转发到 GUI 文本框、写文件等）。
+#
+#   这就类似 Java 中的 AOP（面向切面编程）：
+#   - 被代理的对象：原来的 sys.stdout（控制台输出）
+#   - 切面逻辑：拦截每一行输出，同时做两件事（写控制台 + 发信号给GUI）
+#   - 织入方式：替换 sys.stdout 这个全局变量
+#
+#   关键点：
+#   1. 我们自己的流对象必须实现 write() 和 flush() 方法（这是 Python 对"流"的基本约定）
+#   2. 必须保存原来的 sys.stdout，否则就丢失了控制台输出
+#   3. 多线程安全：sys.stdout 是全局变量，所有线程共享，所以子线程的 print 也会被拦截
+#   4. GUI 更新必须在主线程：所以用 pyqtSignal 把日志从子线程转发到主线程
+# =====================================================================
+
+
+class LogStream:
+    """
+    自定义的标准输出流（stdout），用于全局拦截所有 print 输出。
+    
+    相当于一个"代理/包装器"模式：
+    - 把输出同时转发到原来的控制台（保证终端里仍然能看到输出）
+    - 同时通过回调函数转发给 GUI 显示（可选）
+    """
+
+    def __init__(self, original_stdout):
+        # 保存原来的标准输出（控制台），必须保留，否则 print 就没地方输出了
+        self.original_stdout = original_stdout
+        # 日志回调函数，有新的就调用
+        self._callback = None
+        # 行缓冲区：print 会分多次 write（比如内容 + 换行符），我们攒到一整行再回调
+        self._buffer = ''
+
+    def set_callback(self, callback):
+        """设置日志回调函数，当有新的一行日志时调用"""
+        self._callback = callback
+
+    def write(self, message):
+        """
+        这是最核心的拦截方法。
+        所有 print() 最终都会调用 sys.stdout.write(message)。
+        我们在这里做了之后，就相当于在所有 print 执行时插入了自己的逻辑。
+        """
+        # 第一步：照常输出到原来的控制台（保证终端里仍然能看到）
+        self.original_stdout.write(message)
+
+        # 第二步：如果设置了回调，就把日志行传过去
+        if self._callback is not None:
+            # print 会分多次写入：比如 print("hello") 会先 write("hello") 再 write("\n")
+            # 所以我们用缓冲区攒到一整行（遇到换行符）再回调，避免半行半行地显示
+            self._buffer += message
+            while '\n' in self._buffer:
+                # 按换行符分割，取出完整的一行
+                line, self._buffer = self._buffer.split('\n', 1)
+                # 空行跳过（只是换行符的情况）
+                if line.strip():
+                    try:
+                        self._callback(line)
+                    except Exception:
+                        # 回调出错不能影响正常输出，直接忽略
+                        pass
+
+    def flush(self):
+        """
+        刷新缓冲区。
+        这是流对象必须实现的方法，否则某些库会调用 flush() 来强制输出。
+        我们把它转发给原来的 stdout。
+        """
+        self.original_stdout.flush()
+
+
+# 全局的日志流对象（单例模式，整个程序共用一个
+_global_log_stream = None
+
+
+def setup_global_logging():
+    """
+    初始化全局日志拦截系统。
+    把 sys.stdout 替换成我们自己的 LogStream 对象。
+    之后所有的 print 都会被拦截。
+    """
+    global _global_log_stream
+    if _global_log_stream is None:
+        # 保存原来的 stdout，并创建我们的日志流
+        _global_log_stream = LogStream(sys.stdout)
+        # 替换全局的 sys.stdout
+        sys.stdout = _global_log_stream
+    return _global_log_stream
+
+
+def get_global_log_stream():
+    """获取全局日志流对象（用于设置回调等）"""
+    return _global_log_stream
 
 
 def get_system_font(size=12):
@@ -60,6 +163,10 @@ class DownloadThread(QThread):
     """
     视频下载线程
     用于在后台执行下载任务，避免阻塞UI
+    
+    日志输出说明：
+    下载过程中的 print 输出会被全局 LogStream 拦截，
+    不需要在这里单独处理日志信号，统一由 MainWindow 的 _on_log_line 处理。
     """
     progress = pyqtSignal(int)
     finished = pyqtSignal(dict)
@@ -84,6 +191,12 @@ class MainWindow(QMainWindow):
     """
     主窗口类
     提供视频解析工具的图形界面
+    
+    日志系统说明：
+    - 使用全局 LogStream 拦截所有 print 输出（类似Java AOP切面）
+    - 通过 _log_bridge（QObject+信号）把日志从任意线程转发到主线程
+    - 用户勾选"显示详细日志"时，日志追加到"解析结果"文本框
+    - 默认不显示详细日志
     """
 
     def __init__(self):
@@ -93,6 +206,27 @@ class MainWindow(QMainWindow):
         self.batch_thread = None
         self.next_thread = None
         self.episode_list_thread = None
+
+        # 初始化全局日志拦截系统（替换 sys.stdout）
+        # 这一步之后，程序里所有的 print() 都会被我们的 LogStream 拦截
+        self._log_stream = setup_global_logging()
+
+        # 日志桥接器：把 LogStream 的回调（可能在子线程）转换成 Qt 信号（主线程处理）
+        # 为什么需要这个桥接器？
+        #   - LogStream 的 write() 方法可能在任何线程被调用（比如下载线程里的 print）
+        #   - 但 PyQt 的 GUI 控件只能在主线程更新
+        #   - 所以用 pyqtSignal 做一次转发，Qt 会自动把信号投递到主线程
+        class LogBridge(QThread):
+            log_line = pyqtSignal(str)
+
+            def handle_log(self, line):
+                self.log_line.emit(line)
+
+        self._log_bridge = LogBridge()
+        # 把桥接器的槽函数注册到全局日志流
+        self._log_stream.set_callback(self._log_bridge.handle_log)
+        # 桥接器的信号连接到我们的显示方法
+        self._log_bridge.log_line.connect(self._append_log_line)
 
         self.init_ui()
 
@@ -339,9 +473,16 @@ class MainWindow(QMainWindow):
         self.download_btn.clicked.connect(self.on_download_click)
         self.download_btn.setEnabled(False)
 
+        self.log_checkbox = QCheckBox('显示详细日志')
+        self.log_checkbox.setFont(get_system_font(11))
+        self.log_checkbox.setChecked(False)
+        self.log_checkbox.stateChanged.connect(self._on_log_toggled)
+
         sub_layout.addWidget(QLabel('画质选择:'))
         sub_layout.addWidget(self.quality_combo)
         sub_layout.addWidget(self.download_btn)
+        sub_layout.addStretch()
+        sub_layout.addWidget(self.log_checkbox)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -547,16 +688,16 @@ class MainWindow(QMainWindow):
     #     # 使用自动关闭的提示框，2秒后自动关闭
     #     self.show_auto_close_info('提示', '链接已复制到剪贴板！')
 
-    def on_select_directory(self):
-        """选择下载保存目录"""
-        directory = QFileDialog.getExistingDirectory(
-            self,
-            '选择下载保存目录',
-            os.path.expanduser('~/Downloads'),
-            QFileDialog.ShowDirsOnly
-        )
-        if directory:
-            self.output_path_input.setText(directory)
+    # def on_select_directory(self):
+    #     """选择下载保存目录"""
+    #     directory = QFileDialog.getExistingDirectory(
+    #         self,
+    #         '选择下载保存目录',
+    #         os.path.expanduser('~/Downloads'),
+    #         QFileDialog.ShowDirsOnly
+    #     )
+    #     if directory:
+    #         self.output_path_input.setText(directory)
 
     def on_parse_click(self):
         """处理解析按钮点击"""
@@ -570,9 +711,12 @@ class MainWindow(QMainWindow):
         # api_key: {'name': '万能稳定解析', 'note': '推荐使用', 'status': 'active', 'url': 'https://jx.m3u8.tv/jiexi/?url='}
         print(f"api_key: {api_key}")
 
-        self.result_text.clear()
+        # 不使用 clear()，因为会清掉之前的详细日志
+        # 改为加分隔线追加，保留历史日志
+        self.result_text.append(f"\n{'='*50}")
         self.result_text.append(f"正在解析: {video_url}")
         self.result_text.append(f"使用线路: {self.api_combo.currentText().split(' ')[1]}")
+        self.result_text.append(f"{'='*50}")
 
         result = self.parser.parse_url(video_url, api_key)
 
@@ -598,7 +742,7 @@ class MainWindow(QMainWindow):
 
             self.open_btn.setEnabled(True)
             # self.copy_btn.setEnabled(True)
-            # self.download_btn.setEnabled(True)
+            self.download_btn.setEnabled(True)
             # if platform in ['腾讯视频', '爱奇艺']:
                 # self.next_btn.setEnabled(True)
                 # self.batch_download_btn.setEnabled(True)
@@ -655,17 +799,83 @@ class MainWindow(QMainWindow):
         # 直接调用浏览器播放
         self.on_open_browser()
 
+    def _append_log_line(self, line):
+        """
+        追加一行日志到结果文本框。
+        这个方法由日志桥接器的信号触发，始终在主线程执行，安全。
+        
+        只有当用户勾选了"显示详细日志"时才显示。
+        日志是追加的（不是覆盖），并且自动滚动到底部。
+        
+        注意：初始化顺序问题
+        - 全局日志拦截在 init_ui() 之前就设置了
+        - log_checkbox 在 init_ui() 里才创建
+        - 所以早期的 print 可能触发这个方法，此时 log_checkbox 还不存在
+        - 用 hasattr 检查避免 AttributeError
+        """
+        # 防止初始化顺序问题：log_checkbox 可能还没创建
+        if hasattr(self, 'log_checkbox') and self.log_checkbox.isChecked():
+            self.result_text.append(line)
+            # 自动滚动到底部，保证最新的日志始终可见
+            cursor = self.result_text.textCursor()
+            cursor.movePosition(cursor.End)
+            self.result_text.setTextCursor(cursor)
+
+    def _on_log_toggled(self, state):
+        """
+        用户点击"显示详细日志"复选框时触发。
+        state: Qt.Checked(2) 或 Qt.Unchecked(0)
+        """
+        if state == Qt.Checked:
+            self.result_text.append("\n--- 详细日志已开启 ---")
+        else:
+            self.result_text.append("\n--- 详细日志已关闭 ---")
+
     def on_download_click(self):
-        """默认使用 yt-dlp 实现下载"""
+        """使用 yt-dlp 下载视频（直接下载原始视频URL）"""
         if not hasattr(self, 'parsed_url'):
             QMessageBox.warning(self, '警告', '请先解析视频链接！')
             return
-        # TODO 注意：需要先下载 aria2c
-        # TODO 注意：这里需要支持用户选择下载文件夹
-        import time
-        ts = int(time.time() * 1000)  # 毫秒时间戳（当前）
-        download_cmd=f'yt-dlp --external-downloader aria2c --external-downloader-args "-x 8 -s 8 -k 1M" --concurrent-fragments 4 "{self.original_url}" -o "{ts}.mp4"'
-        # TODO 执行下载命令？
+
+        # 选择下载保存目录
+        output_path = QFileDialog.getExistingDirectory(
+            self,
+            '选择下载保存目录',
+            os.path.expanduser('~/Downloads'),
+            QFileDialog.ShowDirsOnly
+        )
+        if not output_path:
+            return
+
+        # 获取画质选择（取下拉框文本的第一段，如 "best - 最佳画质" -> "best"）
+        quality_text = self.quality_combo.currentText()
+        quality = quality_text.split(' ')[0]
+
+        # 使用原始视频URL进行下载（yt-dlp 直接支持各大视频平台的原始链接）
+        download_url = self.original_url if hasattr(self, 'original_url') else self.parsed_url
+
+        self.result_text.append(f"\n{'='*40}")
+        self.result_text.append(f"开始下载: {download_url}")
+        self.result_text.append(f"保存目录: {output_path}")
+        self.result_text.append(f"画质: {quality}")
+        self.result_text.append(f"{'='*40}")
+
+        # 禁用按钮，显示进度条
+        self.download_btn.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)  # 不确定进度模式（滚动条）
+
+        # 启动下载线程
+        # 注意：下载过程中的所有 print 输出都会被全局 LogStream 拦截，
+        # 如果用户勾选了"显示详细日志"，就会自动显示在解析结果文本框中
+        self.download_thread = DownloadThread(download_url, output_path, quality)
+        self.download_thread.finished.connect(self.on_download_finished)
+        self.download_thread.start()
+
+        # 旧的 aria2c 实现方式（已弃用，改用 yt-dlp 原生下载）
+        # import time
+        # ts = int(time.time() * 1000)
+        # download_cmd=f'yt-dlp --external-downloader aria2c --external-downloader-args "-x 8 -s 8 -k 1M" --concurrent-fragments 4 "{self.original_url}" -o "{ts}.mp4"'
 
     def on_download_finished(self, result):
         """下载完成处理"""
@@ -673,9 +883,11 @@ class MainWindow(QMainWindow):
         self.download_btn.setEnabled(True)
 
         if result['success']:
-            QMessageBox.information(self, '成功', f"视频下载成功！\n保存位置: {result['data']['output_path']}")
+            self.result_text.append(f"\n✅ {result['message']}")
+            QMessageBox.information(self, '下载成功', f"视频下载成功！\n保存位置: {result['data']['output_path']}")
         else:
-            QMessageBox.warning(self, '失败', result['message'])
+            self.result_text.append(f"\n❌ {result['message']}")
+            QMessageBox.warning(self, '下载失败', result['message'])
 
     # def on_batch_download_click(self):
     #     """处理批量下载按钮点击"""
@@ -744,30 +956,30 @@ class MainWindow(QMainWindow):
     #     self.batch_thread.finished.connect(self.on_batch_finished)
     #     self.batch_thread.start()
 
-    def on_batch_progress(self, completed, total, status, message):
-        """批量下载进度更新"""
-        self.result_text.append(message)
-        if total > 0:
-            progress = int((completed / total) * 100)
-            self.batch_progress_bar.setValue(min(progress, 100))
+    # def on_batch_progress(self, completed, total, status, message):
+    #     """批量下载进度更新"""
+    #     self.result_text.append(message)
+    #     if total > 0:
+    #         progress = int((completed / total) * 100)
+    #         self.batch_progress_bar.setValue(min(progress, 100))
 
-    def on_batch_finished(self, result):
-        """批量下载完成处理"""
-        self.batch_progress_bar.setVisible(False)
-        self.batch_download_btn.setEnabled(True)
-
-        if result['success']:
-            data = result['data']
-            msg = (
-                f"批量下载完成！\n\n"
-                f"成功: {len(data['downloaded'])} 集\n"
-                f"失败: {len(data['failed'])} 集\n"
-                f"总计: {data['total']} 集\n"
-                f"保存位置: {data['output_path']}"
-            )
-            QMessageBox.information(self, '批量下载完成', msg)
-        else:
-            QMessageBox.warning(self, '批量下载失败', result['message'])
+    # def on_batch_finished(self, result):
+    #     """批量下载完成处理"""
+    #     self.batch_progress_bar.setVisible(False)
+    #     self.batch_download_btn.setEnabled(True)
+    #
+    #     if result['success']:
+    #         data = result['data']
+    #         msg = (
+    #             f"批量下载完成！\n\n"
+    #             f"成功: {len(data['downloaded'])} 集\n"
+    #             f"失败: {len(data['failed'])} 集\n"
+    #             f"总计: {data['total']} 集\n"
+    #             f"保存位置: {data['output_path']}"
+    #         )
+    #         QMessageBox.information(self, '批量下载完成', msg)
+    #     else:
+    #         QMessageBox.warning(self, '批量下载失败', result['message'])
 
     def open_platform(self, url):
         """打开视频平台"""
@@ -795,40 +1007,40 @@ class MainWindow(QMainWindow):
     #     self.episode_list_thread.finished.connect(self.on_episode_list_finished)
     #     self.episode_list_thread.start()
 
-    def on_episode_list_progress(self, message):
-        """获取剧集列表进度"""
-        self.result_text.append(message)
+    # def on_episode_list_progress(self, message):
+    #     """获取剧集列表进度"""
+    #     self.result_text.append(message)
 
-    def on_episode_list_finished(self, result):
-        """获取剧集列表完成"""
-        self.episode_list_btn.setEnabled(True)
-
-        if result['success']:
-            data = result['data']
-            episodes = data['episodes']
-            total = data['total']
-
-            self.result_text.append(f"\n{'=' * 60}")
-            self.result_text.append(f"📺 平台: {data['platform']}")
-            self.result_text.append(f"✅ 共找到 {total} 集")
-            self.result_text.append(f"{'=' * 60}")
-            self.result_text.append(f"{'集数':<8} {'链接'}")
-            self.result_text.append(f"{'-' * 60}")
-
-            for ep in episodes:
-                self.result_text.append(f"第{ep['episode_num']:<4}集  {ep['url']}")
-
-            self.result_text.append(f"{'=' * 60}")
-            self.result_text.append(f"\n提示：可以通过\"批量下载\"功能下载全部剧集")
-
-            QMessageBox.information(
-                self, '获取成功',
-                f"已获取 {total} 集的剧集列表！\n\n"
-                f"可以使用\"批量下载全部剧集\"功能进行下载。"
-            )
-        else:
-            self.result_text.append(f"\n❌ 获取剧集列表失败: {result['message']}")
-            QMessageBox.warning(self, '获取失败', result['message'])
+    # def on_episode_list_finished(self, result):
+    #     """获取剧集列表完成"""
+    #     self.episode_list_btn.setEnabled(True)
+    #
+    #     if result['success']:
+    #         data = result['data']
+    #         episodes = data['episodes']
+    #         total = data['total']
+    #
+    #         self.result_text.append(f"\n{'=' * 60}")
+    #         self.result_text.append(f"📺 平台: {data['platform']}")
+    #         self.result_text.append(f"✅ 共找到 {total} 集")
+    #         self.result_text.append(f"{'=' * 60}")
+    #         self.result_text.append(f"{'集数':<8} {'链接'}")
+    #         self.result_text.append(f"{'-' * 60}")
+    #
+    #         for ep in episodes:
+    #             self.result_text.append(f"第{ep['episode_num']:<4}集  {ep['url']}")
+    #
+    #         self.result_text.append(f"{'=' * 60}")
+    #         self.result_text.append(f"\n提示：可以通过\"批量下载\"功能下载全部剧集")
+    #
+    #         QMessageBox.information(
+    #             self, '获取成功',
+    #             f"已获取 {total} 集的剧集列表！\n\n"
+    #             f"可以使用\"批量下载全部剧集\"功能进行下载。"
+    #         )
+    #     else:
+    #         self.result_text.append(f"\n❌ 获取剧集列表失败: {result['message']}")
+    #         QMessageBox.warning(self, '获取失败', result['message'])
 
     # def on_next_episode(self):
     #     """处理下一集按钮点击"""
